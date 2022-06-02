@@ -1,0 +1,14 @@
+﻿{
+  "extensions": {
+    "Keyfactor.Orchestrators.Extensions.IOrchestratorJobExtension": {
+      "CertStores.DataPower.Inventory": {
+        "assemblypath": "DataPower.dll",
+        "TypeFullName": "Keyfactor.Extensions.Orchestrator.DataPower.Jobs.Inventory"
+      },
+      "CertStores.DataPower.Management": {
+        "assemblypath": "DataPower.dll",
+        "TypeFullName": "Keyfactor.Extensions.Orchestrator.DataPower.Jobs.Management"
+      }
+    }
+  }
+}
