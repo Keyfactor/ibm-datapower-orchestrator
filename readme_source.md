@@ -21,7 +21,7 @@ Basic |Requires Store Password	|Determines if a store password is required when 
 Basic |Supports Entry Password	|Determined if an individual entry within a store can have a password.  This must be unchecked.
 Advanced |Store Path Type| Determines how the user will enter the store path when setting up the cert store.  Freeform
 Advanced |Supports Custom Alias	|Determines if an individual entry within a store can have a custom Alias.  Optional (if left blank, alias will be a GUID)
-Advanced |Private Key Handling |Determines how the orchestrator deals with private keys.  Required
+Advanced |Private Key Handling |Determines how the orchestrator deals with private keys.  Optional
 Advanced |PFX Password Style |Determines password style for the PFX Password. Default
 Custom Fields|Inventory Page Size|Name:InventoryPageSize Display Name:Inventory Page Size Type:String Default Value:100 Required:True.  This determines the page size during the inventory calls. (100 should be fine)
 Custom Fields|Public Cert Store Name|Name:PublicCertStoreName Display Name:Public Cert Store Name:String Default Value:pubcert Required:True.  This probably will remain pubcert unless someone changed the default name in DataPower.
