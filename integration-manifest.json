@@ -2,7 +2,7 @@
   "$schema": "https://keyfactor.github.io/integration-manifest-schema.json",
   "integration_type": "orchestrator",
   "name": "DataPower Orchestrator",
-  "status": "prototype",
+  "status": "production",
   "description": "The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported. This integration can add/replace certificates in any domain\\directory combination. ",
   "link_github": false,
   "about": {
