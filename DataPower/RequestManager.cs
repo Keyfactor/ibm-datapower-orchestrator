@@ -1028,29 +1028,38 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                             _logger.LogTrace($"Cert Detail Response: {JsonConvert.SerializeObject(viewCertResponse)}");
 
                             _logger.LogTrace($"Add to List: {pc.Name}");
-
                             var pem = Convert.FromBase64String(viewCertResponse.File);
+                            var pemString = Utility.GetPemFromResponse(pem);
                             var cert = new X509Certificate2(pem);
 
                             _logger.LogTrace($"Created X509Certificate2: {cert.SerialNumber} : {cert.Subject}");
 
-                            if (intCount < intMax)
+                            if (pemString.Contains("BEGIN CERTIFICATE"))
                             {
-                                if (!blackList.Contains(pc.Name) && cert.Thumbprint != null)
-                                    inventoryItems.Add(
-                                        new CurrentInventoryItem
-                                        {
-                                            Alias = pc.Name,
-                                            Certificates = new[] {Encoding.Default.GetString(pem)},
-                                            ItemStatus = OrchestratorInventoryItemStatus.Unknown,
-                                            PrivateKeyEntry = true,
-                                            UseChainLevel = false
-                                        });
+                                _logger.LogTrace("Valid Pem File Adding to KF");
 
-                                intCount++;
+                                if (intCount < intMax)
+                                {
+                                    if (!blackList.Contains(pc.Name) && cert.Thumbprint != null)
+                                        inventoryItems.Add(
+                                            new CurrentInventoryItem
+                                            {
+                                                Alias = pc.Name,
+                                                Certificates = new[] {Encoding.Default.GetString(pem)},
+                                                ItemStatus = OrchestratorInventoryItemStatus.Unknown,
+                                                PrivateKeyEntry = true,
+                                                UseChainLevel = false
+                                            });
 
-                                _logger.LogTrace($"Inv-Certs: {pc.Name}");
-                                _logger.LogTrace($"Certificates: {viewCertResponse.File}");
+                                    intCount++;
+
+                                    _logger.LogTrace($"Inv-Certs: {pc.Name}");
+                                    _logger.LogTrace($"Certificates: {viewCertResponse.File}");
+                                }
+                            }
+                            else
+                            {
+                                _logger.LogTrace("Not a valid Pem File, Skipping the Add to Keyfactor...");
                             }
                         }
                         catch (Exception ex)
