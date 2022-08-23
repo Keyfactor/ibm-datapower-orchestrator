@@ -1045,10 +1045,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                                             new CurrentInventoryItem
                                             {
                                                 Alias = pc.Name,
-                                                Certificates = new[] {Encoding.Default.GetString(pem)},
+                                                Certificates = new[] { pemString },
                                                 ItemStatus = OrchestratorInventoryItemStatus.Unknown,
-                                                PrivateKeyEntry = true,
-                                                UseChainLevel = false
+                                                PrivateKeyEntry = false,
+                                                UseChainLevel = true
                                             });
 
                                     intCount++;
