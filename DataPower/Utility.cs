@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects;
 using Keyfactor.Logging;
 using Keyfactor.Orchestrators.Extensions;
+using Keyfactor.PKI.PEM;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -165,6 +168,38 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 logger.LogError($"Error In Utility.GetDomain: {LogHandler.FlattenException(e)}");
                 throw;
             }
+        }
+
+        public static string GetPemFromResponse(byte[] pem)
+        {
+
+            string pemString;
+            try
+            {
+                pemString = PemUtilities.DERToPEM(pem, PemUtilities.PemObjectType.Certificate);
+                var ba = Encoding.ASCII.GetBytes(pemString);
+                var _ = new X509Certificate2(ba);
+            }
+            catch (Exception)
+            {
+                pemString = String.Empty;
+            }
+
+            if (pemString.Length == 0)
+            {
+                try
+                {
+                    pemString = Encoding.UTF8.GetString(pem);
+                    var ba = Encoding.ASCII.GetBytes(pemString);
+                    var _ = new X509Certificate2(ba);
+                }
+                catch (Exception)
+                {
+                    pemString = String.Empty;
+                }
+            }
+
+            return pemString;
         }
     }
 }
