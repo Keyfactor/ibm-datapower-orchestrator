@@ -13,7 +13,7 @@
         "supportsManagementAdd": true,
         "supportsManagementRemove": true,
         "supportsReenrollment": false,
-        "supportsInventory": false,
+        "supportsInventory": true,
         "platformSupport": "Unused"
       },
       "linux": {
@@ -22,7 +22,7 @@
         "supportsManagementAdd": true,
         "supportsManagementRemove": true,
         "supportsReenrollment": false,
-        "supportsInventory": false,
+        "supportsInventory": true,
         "platformSupport": "Unused"
       }
     }
