@@ -2,6 +2,7 @@
 using Keyfactor.Logging;
 using Keyfactor.Orchestrators.Common.Enums;
 using Keyfactor.Orchestrators.Extensions;
+using Keyfactor.Orchestrators.Extensions.Interfaces;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -9,13 +10,16 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
 {
     public class Management : IManagementJobExtension
     {
-        private readonly RequestManager _certManager;
-        private readonly ILogger<Management> _logger;
+        private RequestManager _certManager;
+        private readonly ILogger _logger;
+        private readonly IPAMSecretResolver _resolver;
 
-        public Management(ILogger<Management> logger)
+
+        public Management(IPAMSecretResolver resolver)
         {
-            _logger = logger;
-            _certManager = new RequestManager();
+            _certManager=new RequestManager(resolver);
+            _logger = LogHandler.GetClassLogger<Management>();
+            _resolver = resolver;
         }
 
         public string ExtensionName => "DataPower";

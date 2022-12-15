@@ -3,6 +3,7 @@ using Keyfactor.Extensions.Orchestrator.DataPower.Client;
 using Keyfactor.Logging;
 using Keyfactor.Orchestrators.Common.Enums;
 using Keyfactor.Orchestrators.Extensions;
+using Keyfactor.Orchestrators.Extensions.Interfaces;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -10,15 +11,21 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
 {
     public class Inventory : IInventoryJobExtension
     {
-        private readonly ILogger<Inventory> _logger;
-
+        private readonly ILogger _logger;
         private readonly RequestManager _reqManager;
         private string _protocol;
+        private readonly IPAMSecretResolver _resolver;
 
-        public Inventory(ILogger<Inventory> logger)
+        public Inventory(IPAMSecretResolver resolver)
         {
-            _logger = logger;
-            _reqManager = new RequestManager();
+            _logger = LogHandler.GetClassLogger<Inventory>();
+            _resolver = resolver;
+        }
+
+        private string ResolvePamField(string name, string value)
+        {
+            _logger.LogTrace($"Attempting to resolved PAM eligible field {name}");
+            return _resolver.Resolve(value);
         }
 
         public string ExtensionName => "DataPower";
@@ -57,7 +64,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                 _logger.LogTrace(
                     $"Entering processJob for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
 
-                var apiClient = new DataPowerClient(config.ServerUsername, config.ServerPassword,
+                var apiClient = new DataPowerClient(ResolvePamField("ServerUserName",config.ServerUsername), ResolvePamField("ServerPassword",config.ServerPassword),
                     $"{_protocol}://" + config.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
 
                 var publicCertStoreName = ci.PublicCertStoreName;
