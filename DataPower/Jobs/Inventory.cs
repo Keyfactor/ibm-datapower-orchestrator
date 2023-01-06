@@ -19,6 +19,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
         public Inventory(IPAMSecretResolver resolver)
         {
             _logger = LogHandler.GetClassLogger<Inventory>();
+            _reqManager = new RequestManager(resolver);
             _resolver = resolver;
         }
 
