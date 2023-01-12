@@ -1,4 +1,18 @@
-﻿using System;
+﻿// Copyright 2022 Keyfactor
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,6 +25,7 @@ using Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects;
 using Keyfactor.Logging;
 using Keyfactor.Orchestrators.Common.Enums;
 using Keyfactor.Orchestrators.Extensions;
+using Keyfactor.Orchestrators.Extensions.Interfaces;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Org.BouncyCastle.Crypto;
@@ -24,12 +39,23 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
     {
         private readonly ILogger<RequestManager> _logger;
         private string _protocol;
+        private IPAMSecretResolver _resolver;
+        private string ServerUserName { get; set; }
+        private string ServerPassword { get; set; }
 
-        public RequestManager()
+
+        public RequestManager(IPAMSecretResolver resolver)
         {
             var loggerFactory = (ILoggerFactory) new LoggerFactory();
             var reqLogger = loggerFactory.CreateLogger<RequestManager>();
             _logger = reqLogger;
+            _resolver = resolver;
+        }
+
+        private string ResolvePamField(string name, string value)
+        {
+            _logger.LogTrace($"Attempting to resolved PAM eligible field {name}");
+            return _resolver.Resolve(value);
         }
 
         public bool DoesCryptoCertificateObjectExist(CertStoreInfo ci, string cryptoCertObjectName,
@@ -481,12 +507,15 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         public JobResult AddPubCert(ManagementJobConfiguration addPubConfig, CertStoreInfo ci)
         {
             _logger.MethodEntry(LogLevel.Debug);
+            ServerUserName = ResolvePamField("ServerUserName",addPubConfig.ServerUsername);
+            ServerPassword = ResolvePamField("ServerPassword",addPubConfig.ServerPassword);
+
             _protocol = ci.Protocol;
             _logger.LogTrace(
                 $"Entering AddPubCert for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
-                $"Creating API Client Created with user: {addPubConfig.ServerUsername} password: {addPubConfig.ServerPassword} protocol: {_protocol} ClientMachine: {addPubConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(addPubConfig.ServerUsername, addPubConfig.ServerPassword,
+                $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {addPubConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
+            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
                 $"{_protocol}://" + addPubConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("API Client Created");
 
@@ -564,13 +593,15 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         private JobResult RemoveCertFromDomain(ManagementJobConfiguration removeConfig, CertStoreInfo ci, NamePrefix np)
         {
             _logger.MethodEntry(LogLevel.Debug);
+            ServerUserName = ResolvePamField("ServerUserName", removeConfig.ServerUsername);
+            ServerPassword = ResolvePamField("ServerPassword", removeConfig.ServerPassword);
             _protocol = ci.Protocol;
             _logger.LogTrace($"Entering RemoveCertStore for {removeConfig.JobCertificate.Alias} ");
             _logger.LogTrace(
                 $"Entering RemoveCertStore for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
-                $"Creating API Client Created with user: {removeConfig.ServerUsername} password: {removeConfig.ServerPassword} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(removeConfig.ServerUsername, removeConfig.ServerPassword,
+                $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
+            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
                 $"{_protocol}://" + removeConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("API Client Created!");
             try
@@ -643,12 +674,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         private JobResult RemoveFile(ManagementJobConfiguration removeConfig, CertStoreInfo ci, string filename)
         {
             _logger.MethodEntry(LogLevel.Debug);
+            ServerUserName = ResolvePamField("ServerUserName", removeConfig.ServerUsername);
+            ServerPassword = ResolvePamField("ServerPassword", removeConfig.ServerPassword);
             _logger.LogTrace($"Entering RemoveFile for {removeConfig.JobCertificate.Alias} filename {filename}");
             _logger.LogTrace(
                 $"Entering RemoveFile for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
-                $"Creating API Client Created with user: {removeConfig.ServerUsername} password: {removeConfig.ServerPassword} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(removeConfig.ServerUsername, removeConfig.ServerPassword,
+                $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
+            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
                 $"{_protocol}://" + removeConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("Api Client Created!");
             try
@@ -752,13 +785,15 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         private JobResult AddCertStore(ManagementJobConfiguration addConfig, CertStoreInfo ci, NamePrefix np)
         {
             _logger.MethodEntry(LogLevel.Debug);
+            ServerUserName = ResolvePamField("ServerUserName", addConfig.ServerUsername);
+            ServerPassword = ResolvePamField("ServerPassword", addConfig.ServerPassword);
             var privateKeyString = "";
             _protocol = ci.Protocol;
             _logger.LogTrace(
                 $"Entering AddCertStore for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
-                $"Creating API Client Created with user: {addConfig.ServerUsername} password: {addConfig.ServerPassword} protocol: {_protocol} ClientMachine: {addConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(addConfig.ServerUsername, addConfig.ServerPassword,
+                $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {addConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
+            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
                 $"{_protocol}://" + addConfig.CertificateStoreDetails.ClientMachine.Trim(),
                 ci.Domain);
             _logger.LogTrace("apiClient created!");
