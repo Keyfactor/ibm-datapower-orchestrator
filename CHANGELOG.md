@@ -5,3 +5,4 @@
 
 1.0.0
 * Windows Orchestrator with Add, Remove and Inventory Capabilities
+
