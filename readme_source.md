@@ -27,6 +27,9 @@ Custom Fields|Inventory Page Size|Name:InventoryPageSize Display Name:Inventory 
 Custom Fields|Public Cert Store Name|Name:PublicCertStoreName Display Name:Public Cert Store Name:String Default Value:pubcert Required:True.  This probably will remain pubcert unless someone changed the default name in DataPower.
 Custom Fields|Protocol|Name:Protocol Display Name:Protocol Name:String Default Value:https Required:True.  This should always be https in production, may need to change in test to http.
 Custom Fields|Inventory Black List|Name:InventoryBlackList Display Name:Inventory Black List Name:String Default Value:Leave Blank Required:False.  Comma seperated list of alias values you do not want to inventory from DataPower.
+Custom Fields|Server Username|Api UserName for DataPower
+Custom Fields|Server Password|Api Password for UserName Described Above
+Custom Fields|Use SSL|Set this to true
 Entry Parameters|N/A| There are no Entry Parameters
 
 ![image.png](/images/CertStoreType-Basic.gif)
