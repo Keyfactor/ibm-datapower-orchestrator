@@ -1,63 +1,62 @@
-## CERT STORE SETUP AND GENERAL PERMISSIONS
-<details>
-	<summary>Cert Store Type Configuration</summary>
-	
-In Keyfactor Command create a new Certificate Store Type similar to the one below:
+**IBM Datapower**
+
+**Overview**
+
+The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported.  This integration can add/replace certificates in any domain\directory combination.  For example default\pubcert
+
+---
+
+﻿**1) Create the new Certificate store Type for the New DataPower AnyAgent**
 
 #### STORE TYPE CONFIGURATION
 SETTING TAB  |  CONFIG ELEMENT	| DESCRIPTION
 ------|-----------|------------------
 Basic |Name	|Descriptive name for the Store Type.  IBM Data Power Universal can be used.
-Basic |Short Name	|The short name that identifies the registered functionality of the orchestrator. Must be DataPower
-Basic |Custom Capability|You can leave this unchecked and use the default.
+Basic |Short Name	|The short name that identifies the registered functionality of the orchestrator. Must be DataPower.
+Basic |Custom Capability|Unchecked
 Basic |Job Types	|Inventory, Add, and Remove are the supported job types. 
 Basic |Needs Server	|Must be checked
-Basic |Blueprint Allowed	|Checked
+Basic |Blueprint Allowed	|checked
 Basic |Requires Store Password	|Determines if a store password is required when configuring an individual store.  This must be unchecked.
 Basic |Supports Entry Password	|Determined if an individual entry within a store can have a password.  This must be unchecked.
 Advanced |Store Path Type| Determines how the user will enter the store path when setting up the cert store.  Freeform
-Advanced |Supports Custom Alias	|Determines if an individual entry within a store can have a custom Alias.  This must be Required
+Advanced |Supports Custom Alias	|Determines if an individual entry within a store can have a custom Alias.  Optional (if left blank, alias will be a GUID)
 Advanced |Private Key Handling |Determines how the orchestrator deals with private keys.  Optional
 Advanced |PFX Password Style |Determines password style for the PFX Password. Default
+Custom Fields|Inventory Page Size|Name:InventoryPageSize Display Name:Inventory Page Size Type:String Default Value:100 Required:True.  This determines the page size during the inventory calls. (100 should be fine)
+Custom Fields|Public Cert Store Name|Name:PublicCertStoreName Display Name:Public Cert Store Name:String Default Value:pubcert Required:True.  This probably will remain pubcert unless someone changed the default name in DataPower.
+Custom Fields|Protocol|Name:Protocol Display Name:Protocol Name:String Default Value:https Required:True.  This should always be https in production, may need to change in test to http.
+Custom Fields|Inventory Black List|Name:InventoryBlackList Display Name:Inventory Black List Name:String Default Value:Leave Blank Required:False.  Comma seperated list of alias values you do not want to inventory from DataPower.
+Custom Fields|Server Username|Api UserName for DataPower
+Custom Fields|Server Password|Api Password for UserName Described Above
+Custom Fields|Use SSL|Set this to true
+Entry Parameters|N/A| There are no Entry Parameters
 
-#### CUSTOM FIELDS FOR STORE TYPE
-NAME          |  DISPLAY NAME	| TYPE | DEFAULT VALUE | DEPENDS ON | REQUIRED |DESCRIPTION
---------------|-----------------|-------|--------------|-------------|---------|--------------
-ServerUsername|Server Username  |Secret |              |Unchecked    |Yes       |Data Power Api User Name
-ServerPassword|Server Password  |Secret |              |Unchecked    |Yes       |Data Power Api Password
-ServerUseSsl  |Use SSL          |Bool   |True          |Unchecked    |Yes       |Requires SSL Connection
-InventoryPageSize |Inventory Page Size |String |100|Unchecked|Yes|This will determine the paging level during the inventory process.
-PublicCertStoreName |Public Cert Store Name |String |pubcert|Unchecked|Yes|Name of the public cert store location on DataPower.
-Protocol |Protocol Name |String |https|Unchecked|Yes|Prototcol should always be https in production.  Might need http in test environment.
-InventoryBlackList |Inventory Black List |String | |Unchecked|No|Comma seperated list of alias values you do not want to inventory from DataPower
+![image.png](/images/CertStoreType-Basic.gif)
 
-#### ENTRY PARAMETERS FOR STORE TYPE
-There are no entry parameters used in this integration.
-</details>
+![image.png](/images/CertStoreType-Advanced.gif)
 
-<details>
-<summary>IBM DataPower Certificate Store</summary>
-In Keyfactor Command, navigate to Certificate Stores from the Locations Menu.  Click the Add button to create a new Certificate Store using the settings defined below.
+![image.png](/images/CertStoreType-CustomFields.gif)
 
+    
 #### STORE CONFIGURATION 
 CONFIG ELEMENT	|DESCRIPTION
 ----------------|---------------
-Category	|The type of certificate store to be configured. Select category based on the display name configured above "DataPower".
+Category	|The type of certificate store to be configured. Select category based on the display name configured above "IBM Data Power Universal".
 Container	|This is a logical grouping of like stores. This configuration is optional and does not impact the functionality of the store.
-Client Machine	|The hostname of the Panorama or Firewall.  Sample is "dp.cloudapp.azure.com".
-Store Path	| This will the domain\path combination to enroll and inventory to. If it is the default domain just put the path.
+Client Machine	| The server and port the DataPower API runs on.  This is typically port 5554 for the API.
+Store Path	|This will the domain\path combination to enroll and inventory to.  If it is the default domain just put the path.
+Inventory Page Size|This determines the page size during the inventory calls. (100 should be fine).
+Public Cert Store Name| This probably will remain pubcert unless someone changed the default name in DataPower.
+Protocol| This should always be https in production, may need to change in test to http.
+Inventory Black List| Comma seperated list of alias values you do not want to inventory from DataPower.
 Orchestrator	|This is the orchestrator server registered with the appropriate capabilities to manage this certificate store type. 
 Inventory Schedule	|The interval that the system will use to report on what certificates are currently in the store. 
 Use SSL	|This should be checked.
 User	|The Data Power user that has access to the API and enroll and inventory functions in DataPower.
-Password |Api Password Setup for the user above
+Password |Password for the user mentioned above.
 
-</details>
-
-
-## Test Cases
-<details>
-<summary>Data Power Test Cases</summary>
+![image.png](/images/CertStore.gif)
 
 *** 
 
@@ -96,4 +95,7 @@ Case Number|Case Name|Case Description|Overwrite Flag|Alias Name|Expected Result
 4c|Remove Private Key and Cert From *testdomain\cert* path with PAM Credentials|Remove Private Key and Cert From *testdomain\cert* path using credentials stored in a PAM Provider|False|cryptoobjs|Crypto Certificate, Crypto Key and Pem/Crt are removed from Data Power *testdomain\cert* path|True
 
 *** 
-</details>
+
+### License
+[Apache](https://apache.org/licenses/LICENSE-2.0)
+
