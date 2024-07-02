@@ -133,7 +133,9 @@ Protocol |Protocol Name |String |https|Unchecked|Yes|Prototcol should always be 
 InventoryBlackList |Inventory Black List |String | |Unchecked|No|Comma seperated list of alias values you do not want to inventory from DataPower
 
 </details>
+
 #### ENTRY PARAMETERS FOR STORE TYPE
+
 There are no entry parameters used in this integration.
 
 
