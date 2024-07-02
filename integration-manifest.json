@@ -1,123 +1,123 @@
 {
-"$schema": "https://keyfactor.github.io/integration-manifest-schema.json",
-"integration_type": "orchestrator",
-"name": "DataPower Orchestrator",
-"status": "production",
-"update_catalog": true,
-"link_github": true,
-"support_level": "kf-supported",
-"release_dir": "PaloAlto/bin/Release/netcoreapp3.1",
-"description": "The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported. This integration can add/replace certificates in any domain\\directory combination.",
-"about": {
-"orchestrator": {
-"UOFramework": "10.1",
-"keyfactor_platform_version": "9.10",
-"pam_support": true,
-"win": {
-"supportsCreateStore": false,
-"supportsDiscovery": false,
-"supportsManagementAdd": true,
-"supportsManagementRemove": true,
-"supportsReenrollment": false,
-"supportsInventory": true,
-"platformSupport": "Unused"
-},
-"linux": {
-"supportsCreateStore": false,
-"supportsDiscovery": false,
-"supportsManagementAdd": false,
-"supportsManagementRemove": false,
-"supportsReenrollment": false,
-"supportsInventory": false,
-"platformSupport": "Unused"
-},
-"store_types": [
-{
-"Name": "IBM DataPower Universal",
-"ShortName": "DataPower",
-"Capability": "",
-"LocalStore": false,
-"SupportedOperations": {
-"Add": true,
-"Create": false,
-"Discovery": false,
-"Enrollment": false,
-"Remove": true
-},
-"Properties": [
-{
-"Name": "ServerUsername",
-"DisplayName": "Server Username",
-"Type": "Secret",
-"DependsOn": null,
-"DefaultValue": null,
-"Required": false
-},
-{
-"Name": "ServerPassword",
-"DisplayName": "Server Password",
-"Type": "Secret",
-"DependsOn": null,
-"DefaultValue": null,
-"Required": false
-},
-{
-"Name": "ServerUseSsl",
-"DisplayName": "Use SSL",
-"Type": "Bool",
-"DependsOn": null,
-"DefaultValue": "true",
-"Required": true
-},
-{
-"Name": "InventoryPageSize",
-"DisplayName": "Inventory Page Size",
-"Type": "String",
-"DependsOn": null,
-"DefaultValue": "100",
-"Required": true
-},
-{
-"Name": "PublicCertStoreName",
-"DisplayName": "Public Cert Store Name",
-"Type": "String",
-"DependsOn": null,
-"DefaultValue": "pubcert",
-"Required": true
-},
-{
-"Name": "Protocol",
-"DisplayName": "Protocol Name",
-"Type": "String",
-"DependsOn": null,
-"DefaultValue": "https",
-"Required": true
-},
-{
-"Name": "InventoryBlackList",
-"DisplayName": "Inventory Black List",
-"Type": "String",
-"DependsOn": null,
-"DefaultValue": "",
-"Required": false
-}
-],
-"EntryParameters": [
-],
-"PasswordOptions": {
-"EntrySupported": false,
-"StoreRequired": false,
-"Style": "Default"
-},
-"PrivateKeyAllowed": "Optional",
-"JobProperties": [
-],
-"ServerRequired": true,
-"PowerShell": false,
-"BlueprintAllowed": true,
-"CustomAliasAllowed": "Required"
-}
-]
-}
-}
+  "$schema": "https://keyfactor.github.io/integration-manifest-schema.json",
+  "integration_type": "orchestrator",
+  "name": "DataPower Orchestrator",
+  "status": "production",
+  "update_catalog": true,
+  "link_github": true,
+  "support_level": "kf-supported",
+  "release_dir": "DataPower/bin/Release/netcoreapp3.1",
+  "description": "The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported. This integration can add/replace certificates in any domain\\directory combination.",
+  "about": {
+    "orchestrator": {
+      "UOFramework": "10.1",
+      "keyfactor_platform_version": "9.10",
+      "pam_support": true,
+      "win": {
+        "supportsCreateStore": false,
+        "supportsDiscovery": false,
+        "supportsManagementAdd": true,
+        "supportsManagementRemove": true,
+        "supportsReenrollment": false,
+        "supportsInventory": true,
+        "platformSupport": "Unused"
+      },
+      "linux": {
+        "supportsCreateStore": false,
+        "supportsDiscovery": false,
+        "supportsManagementAdd": false,
+        "supportsManagementRemove": false,
+        "supportsReenrollment": false,
+        "supportsInventory": false,
+        "platformSupport": "Unused"
+      },
+      "store_types": [
+        {
+          "Name": "IBM DataPower Universal",
+          "ShortName": "DataPower",
+          "Capability": "",
+          "LocalStore": false,
+          "SupportedOperations": {
+            "Add": true,
+            "Create": false,
+            "Discovery": false,
+            "Enrollment": false,
+            "Remove": true
+          },
+          "Properties": [
+            {
+              "Name": "ServerUsername",
+              "DisplayName": "Server Username",
+              "Type": "Secret",
+              "DependsOn": null,
+              "DefaultValue": null,
+              "Required": false
+            },
+            {
+              "Name": "ServerPassword",
+              "DisplayName": "Server Password",
+              "Type": "Secret",
+              "DependsOn": null,
+              "DefaultValue": null,
+              "Required": false
+            },
+            {
+              "Name": "ServerUseSsl",
+              "DisplayName": "Use SSL",
+              "Type": "Bool",
+              "DependsOn": null,
+              "DefaultValue": "true",
+              "Required": true
+            },
+            {
+              "Name": "InventoryPageSize",
+              "DisplayName": "Inventory Page Size",
+              "Type": "String",
+              "DependsOn": null,
+              "DefaultValue": "100",
+              "Required": true
+            },
+            {
+              "Name": "PublicCertStoreName",
+              "DisplayName": "Public Cert Store Name",
+              "Type": "String",
+              "DependsOn": null,
+              "DefaultValue": "pubcert",
+              "Required": true
+            },
+            {
+              "Name": "Protocol",
+              "DisplayName": "Protocol Name",
+              "Type": "String",
+              "DependsOn": null,
+              "DefaultValue": "https",
+              "Required": true
+            },
+            {
+              "Name": "InventoryBlackList",
+              "DisplayName": "Inventory Black List",
+              "Type": "String",
+              "DependsOn": null,
+              "DefaultValue": "",
+              "Required": false
+            }
+          ],
+          "EntryParameters": [
+          ],
+          "PasswordOptions": {
+            "EntrySupported": false,
+            "StoreRequired": false,
+            "Style": "Default"
+          },
+          "PrivateKeyAllowed": "Optional",
+          "JobProperties": [
+          ],
+          "ServerRequired": true,
+          "PowerShell": false,
+          "BlueprintAllowed": true,
+          "CustomAliasAllowed": "Required"
+        }
+      ]
+    }
+  }
 }
