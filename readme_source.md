@@ -31,6 +31,7 @@ PublicCertStoreName |Public Cert Store Name |String |pubcert|Unchecked|Yes|Name 
 Protocol |Protocol Name |String |https|Unchecked|Yes|Prototcol should always be https in production.  Might need http in test environment.
 InventoryBlackList |Inventory Black List |String | |Unchecked|No|Comma seperated list of alias values you do not want to inventory from DataPower
 
+</details>
 #### ENTRY PARAMETERS FOR STORE TYPE
 There are no entry parameters used in this integration.
 
