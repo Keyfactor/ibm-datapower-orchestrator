@@ -23,19 +23,36 @@ Advanced |PFX Password Style |Determines password style for the PFX Password. De
 #### CUSTOM FIELDS FOR STORE TYPE
 NAME          |  DISPLAY NAME	| TYPE | DEFAULT VALUE | DEPENDS ON | REQUIRED |DESCRIPTION
 --------------|-----------------|-------|--------------|-------------|---------|--------------
-ServerUsername|Server Username  |Secret |              |Unchecked    |Yes       |Palo Alto Api User Name
-ServerPassword|Server Password  |Secret |              |Unchecked    |Yes       |Palo Alto Api Password
+ServerUsername|Server Username  |Secret |              |Unchecked    |Yes       |Data Power Api User Name
+ServerPassword|Server Password  |Secret |              |Unchecked    |Yes       |Data Power Api Password
 ServerUseSsl  |Use SSL          |Bool   |True          |Unchecked    |Yes       |Requires SSL Connection
 InventoryPageSize |Inventory Page Size |String |100|Unchecked|Yes|This will determine the paging level during the inventory process.
 PublicCertStoreName |Public Cert Store Name |String |pubcert|Unchecked|Yes|Name of the public cert store location on DataPower.
 Protocol |Protocol Name |String |https|Unchecked|Yes|Prototcol should always be https in production.  Might need http in test environment.
 InventoryBlackList |Inventory Black List |String | |Unchecked|No|Comma seperated list of alias values you do not want to inventory from DataPower
 
+#### ENTRY PARAMETERS FOR STORE TYPE
+There are no entry parameters used in this integration.
 </details>
 
-#### ENTRY PARAMETERS FOR STORE TYPE
+<details>
+<summary>IBM DataPower Certificate Store</summary>
+In Keyfactor Command, navigate to Certificate Stores from the Locations Menu.  Click the Add button to create a new Certificate Store using the settings defined below.
 
-There are no entry parameters used in this integration.
+#### STORE CONFIGURATION 
+CONFIG ELEMENT	|DESCRIPTION
+----------------|---------------
+Category	|The type of certificate store to be configured. Select category based on the display name configured above "DataPower".
+Container	|This is a logical grouping of like stores. This configuration is optional and does not impact the functionality of the store.
+Client Machine	|The hostname of the Panorama or Firewall.  Sample is "dp.cloudapp.azure.com".
+Store Path	| This will the domain\path combination to enroll and inventory to. If it is the default domain just put the path.
+Orchestrator	|This is the orchestrator server registered with the appropriate capabilities to manage this certificate store type. 
+Inventory Schedule	|The interval that the system will use to report on what certificates are currently in the store. 
+Use SSL	|This should be checked.
+User	|The Data Power user that has access to the API and enroll and inventory functions in DataPower.
+Password |Api Password Setup for the user above
+
+</details>
 
 
 ## Test Cases
