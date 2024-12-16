@@ -43,7 +43,6 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
             try
             {
                 _logger.MethodEntry(LogLevel.Debug);
-                _logger.LogTrace($"Any Job Config {JsonConvert.SerializeObject(config)}");
 
                 var ci = Utility.ParseCertificateConfig(config);
                 var np = Utility.ParseStoreProperties(config);
