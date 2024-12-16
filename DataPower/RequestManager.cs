@@ -535,7 +535,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 //If you have a password then you will get a PFX in return instead of the base64 encoded string
                 if (!string.IsNullOrEmpty(addPubConfig.JobCertificate?.PrivateKeyPassword))
                 {
-                    _logger.LogTrace($"Has PFX Password {addPubConfig.JobCertificate?.PrivateKeyPassword}");
+                    _logger.LogTrace($"Has PFX Password");
                     using var ms = new MemoryStream(certData);
                     store = new Pkcs12Store(ms, addPubConfig.JobCertificate?.PrivateKeyPassword.ToCharArray());
                     var storeAlias = store.Aliases.Cast<string>().SingleOrDefault(a => store.IsKeyEntry(a));
@@ -600,7 +600,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             _logger.LogTrace(
                 $"Entering RemoveCertStore for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
-                $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
+                $"Creating API Client Created with user: {ServerUserName} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
             var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
                 $"{_protocol}://" + removeConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("API Client Created!");
@@ -792,7 +792,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             _logger.LogTrace(
                 $"Entering AddCertStore for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
-                $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {addConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
+                $"Creating API Client Created with user: {ServerUserName} protocol: {_protocol} ClientMachine: {addConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
             var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
                 $"{_protocol}://" + addConfig.CertificateStoreDetails.ClientMachine.Trim(),
                 ci.Domain);
@@ -808,7 +808,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             {
                 if (!string.IsNullOrEmpty(addConfig.JobCertificate.PrivateKeyPassword))
                 {
-                    _logger.LogTrace($"Has Password: {addConfig.JobCertificate.PrivateKeyPassword}");
+                    _logger.LogTrace($"Has Password");
                     var certPem = GetCertPem(addConfig, alias, ref privateKeyString);
                     _logger.LogTrace($"certPem: {certPem}");
                     var baseAlias = alias.ToLower();
