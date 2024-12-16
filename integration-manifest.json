@@ -37,9 +37,9 @@
       },
       "store_types": [
         {
-          "Name": "FortiWeb",
-          "ShortName": "FortiWeb",
-          "Capability": "FortiWeb",
+          "Name": "IBM Data Power",
+          "ShortName": "DataPower",
+          "Capability": "DataPower",
           "LocalStore": false,
           "SupportedOperations": {
             "Add": true,
