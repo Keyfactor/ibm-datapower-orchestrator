@@ -74,7 +74,6 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                 _protocol = ci.Protocol;
                 _logger.LogTrace(
                     $"Certificate Config Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
-                _logger.LogTrace($"Any Job Config {JsonConvert.SerializeObject(config)}");
                 _logger.LogTrace("Entering IBM DataPower: Certificate Inventory");
                 _logger.LogTrace(
                     $"Entering processJob for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
