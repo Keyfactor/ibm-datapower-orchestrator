@@ -36,6 +36,7 @@ The IBM DataPower Orchestrator allows for the management of certificates in the 
 * DataPower
 
 
+
 ## Compatibility
 
 This integration is compatible with Keyfactor Universal Orchestrator version 10.4 and later.
