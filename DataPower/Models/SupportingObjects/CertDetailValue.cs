@@ -16,6 +16,7 @@ using Newtonsoft.Json;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects
 {
+    [JsonConverter(typeof(CertDetailValueConverter))]
     public class CertDetailValue
     {
         [JsonProperty("value")] public string Value { get; set; }
