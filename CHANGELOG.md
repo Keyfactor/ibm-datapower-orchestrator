@@ -1,3 +1,6 @@
+1.1.2
+* Added Support for new version of Data Power and Backwards for Old Versions After Data Power API Breaking Changes
+  
 1.1.1
 * Dual Build .Net 6 and .Net 8 support
 * Test Tool Modifications
