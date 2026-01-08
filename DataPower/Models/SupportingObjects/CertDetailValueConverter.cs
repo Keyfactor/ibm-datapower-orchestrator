@@ -42,8 +42,9 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects
 
             if (token.Type == JTokenType.Integer)
             {
-                // Handle integer values (e.g., Version, SubjectPublicKeyBitLength)
-                return new CertDetailValue { Value = token.Value<long>().ToString() };
+                // Handle integer values (e.g., Version, SubjectPublicKeyBitLength, SerialNumber)
+                // Use ToString() directly to handle BigInteger values that exceed long range
+                return new CertDetailValue { Value = token.ToString() };
             }
 
             if (token.Type == JTokenType.Object)
@@ -59,7 +60,8 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects
                     }
                     else if (valueToken.Type == JTokenType.Integer)
                     {
-                        value = valueToken.Value<long>().ToString();
+                        // Use ToString() directly to handle BigInteger values that exceed long range
+                        value = valueToken.ToString();
                     }
                     else
                     {
