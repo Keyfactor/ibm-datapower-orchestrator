@@ -17,6 +17,8 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Collections.Generic;
+using System.Linq;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.Requests;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.Responses;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects;
@@ -71,6 +73,71 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Client
         public string Password { get; set; }
 
         #region Class Methods
+
+        public List<DomainInfo> ListDomains()
+        {
+            try
+            {
+                var request = new ListDomainsRequest();
+                var strResponse = ApiRequestString("ListDomains", request.GetResource(), request.Method,
+                    string.Empty, false, true);
+
+                var containerName = "domain";
+
+                // DataPower returns a single object instead of array when only one domain exists
+                if (strResponse.Contains($"\"{containerName}\"") &&
+                    !strResponse.Contains($"\"{containerName}\" : [") &&
+                    !strResponse.Contains($"\"{containerName}\":["))
+                {
+                    // Wrap single domain object in array for proper deserialization
+                    var singleResponse = JsonConvert.DeserializeObject<ListDomainsSingleResponse>(strResponse);
+                    return singleResponse?.Domain != null
+                        ? new List<DomainInfo> { singleResponse.Domain }
+                        : new List<DomainInfo>();
+                }
+
+                var response = JsonConvert.DeserializeObject<ListDomainsResponse>(strResponse);
+                return response?.Domains?.ToList() ?? new List<DomainInfo>();
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Error In DataPowerClient.ListDomains: {LogHandler.FlattenException(e)}");
+                throw;
+            }
+        }
+
+        public List<string> ListFileStoreDirectories(string domain)
+        {
+            try
+            {
+                var request = new ListFileStoreRequest(domain);
+                var strResponse = ApiRequestString("ListFileStoreDirectories", request.GetResource(), request.Method,
+                    string.Empty, false, true);
+
+                var containerName = "directory";
+
+                // DataPower returns a single object instead of array when only one directory exists
+                if (strResponse.Contains($"\"{containerName}\"") &&
+                    !strResponse.Contains($"\"{containerName}\" : [") &&
+                    !strResponse.Contains($"\"{containerName}\":["))
+                {
+                    strResponse = FixDataPowerBadJson(strResponse, containerName);
+                }
+
+                var response = JsonConvert.DeserializeObject<ListFileStoreResponse>(strResponse);
+                if (response?.FileStore?.Directories == null)
+                    return new List<string>();
+
+                return response.FileStore.Directories
+                    .Select(d => d.Name)
+                    .ToList();
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Error In DataPowerClient.ListFileStoreDirectories: {LogHandler.FlattenException(e)}");
+                throw;
+            }
+        }
 
         public bool SaveConfig()
         {
