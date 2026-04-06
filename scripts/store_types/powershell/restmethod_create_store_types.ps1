@@ -124,7 +124,7 @@ New-StoreType "DataPower" @'
     }
   ],
   "EntryParameters": [],
-  "StorePathDescription": "The Store Path field should always be / unless we later determine there are alternate locations needed.",
+  "StorePathDescription": "The store path uses the format domain\\directory (e.g., default\\pubcert, production-api\\cert). The Discovery job can automatically find all valid store paths on an appliance.",
   "PasswordOptions": {
     "EntrySupported": false,
     "StoreRequired": false,
