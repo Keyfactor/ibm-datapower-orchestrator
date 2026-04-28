@@ -24,11 +24,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
 {
-    public class Discovery : IDiscoveryJobExtension
+    public class Discovery : JobBase, IDiscoveryJobExtension
     {
-        private readonly ILogger _logger;
-        private readonly IPAMSecretResolver _resolver;
-
         // Certificate-relevant filestore directories on DataPower
         private static readonly HashSet<string> CertStoreDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -37,16 +34,9 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
             "sharedcert"
         };
 
-        public Discovery(IPAMSecretResolver resolver)
+        public Discovery(IPAMSecretResolver resolver) : base(resolver)
         {
-            _logger = LogHandler.GetClassLogger<Discovery>();
-            _resolver = resolver;
-        }
-
-        private string ResolvePamField(string name, string value)
-        {
-            _logger.LogTrace($"Attempting to resolved PAM eligible field {name}");
-            return _resolver.Resolve(value);
+            Logger = LogHandler.GetClassLogger<Discovery>();
         }
 
         public string ExtensionName => "DataPower";
@@ -54,92 +44,146 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
         public JobResult ProcessJob(DiscoveryJobConfiguration jobConfiguration,
             SubmitDiscoveryUpdate submitDiscoveryUpdate)
         {
-            try
+            if (jobConfiguration == null)
             {
-                _logger.MethodEntry(LogLevel.Debug);
-                return PerformDiscovery(jobConfiguration, submitDiscoveryUpdate);
+                Logger.LogError("ProcessJob called with null jobConfiguration.");
+                return FailureResult(0, "DiscoveryJobConfiguration is null.");
             }
-            catch (Exception e)
+
+            if (submitDiscoveryUpdate == null)
             {
-                _logger.LogError($"Error In Discovery.ProcessJob: {LogHandler.FlattenException(e)}");
-                return new JobResult
+                Logger.LogError("ProcessJob called with null submitDiscoveryUpdate.");
+                return FailureResult(jobConfiguration.JobHistoryId, "SubmitDiscoveryUpdate delegate is null.");
+            }
+
+            using (var flow = new FlowLogger(Logger, "Discovery-ProcessJob"))
+            {
+                try
                 {
-                    FailureMessage = $"Unknown Exception Occured In ProcessJob: {LogHandler.FlattenException(e)}",
-                    JobHistoryId = jobConfiguration.JobHistoryId,
-                    Result = OrchestratorJobStatusJobResult.Failure
-                };
+                    Logger.MethodEntry(LogLevel.Debug);
+
+                    flow.Step("ValidateConfig", () =>
+                    {
+                        if (string.IsNullOrWhiteSpace(jobConfiguration.ClientMachine))
+                            throw new ArgumentException("ClientMachine is null or empty.");
+                    });
+
+                    return PerformDiscovery(jobConfiguration, submitDiscoveryUpdate, flow);
+                }
+                catch (Exception e)
+                {
+                    var msg = DescribeException(e);
+                    flow.Fail("ProcessJob", msg);
+                    Logger.LogError(e, "Error In Discovery.ProcessJob: {ErrorMessage}", LogHandler.FlattenException(e));
+                    return FailureResult(jobConfiguration.JobHistoryId,
+                        $"Unknown Exception Occured In ProcessJob: {msg}", flow);
+                }
             }
         }
 
-        private JobResult PerformDiscovery(DiscoveryJobConfiguration config, SubmitDiscoveryUpdate submitDiscovery)
+        private JobResult PerformDiscovery(DiscoveryJobConfiguration config, SubmitDiscoveryUpdate submitDiscovery, FlowLogger flow)
         {
             try
             {
                 var protocol = "https";
-                if (config.JobProperties != null && config.JobProperties.ContainsKey("Protocol"))
+                flow.Step("ParseProtocol", () =>
                 {
-                    protocol = config.JobProperties["Protocol"]?.ToString() ?? "https";
-                }
+                    if (config.JobProperties != null && config.JobProperties.ContainsKey("Protocol"))
+                    {
+                        protocol = config.JobProperties["Protocol"]?.ToString() ?? "https";
+                    }
+                }, $"protocol={protocol}");
 
                 var baseUrl = $"{protocol}://" + config.ClientMachine.Trim();
+                Logger.LogTrace($"Entering IBM DataPower: Discovery for appliance {config.ClientMachine}");
 
-                _logger.LogTrace($"Entering IBM DataPower: Discovery for appliance {config.ClientMachine}");
+                DataPowerClient apiClient = null;
+                flow.Step("CreateApiClient", () =>
+                {
+                    apiClient = new DataPowerClient(
+                        ResolvePamField("ServerUserName", config.ServerUsername),
+                        ResolvePamField("ServerPassword", config.ServerPassword),
+                        baseUrl,
+                        "default");
+                }, $"host={config.ClientMachine}");
 
-                var apiClient = new DataPowerClient(
-                    ResolvePamField("ServerUserName", config.ServerUsername),
-                    ResolvePamField("ServerPassword", config.ServerPassword),
-                    baseUrl,
-                    "default");
+                List<Models.SupportingObjects.DomainInfo> domains = null;
+                flow.Step("ListDomains", () =>
+                {
+                    domains = apiClient.ListDomains();
+                }, $"will populate domains");
 
-                // Step 1: List all domains on the appliance
-                _logger.LogTrace("Discovering domains on DataPower appliance...");
-                var domains = apiClient.ListDomains();
-                _logger.LogTrace($"Found {domains.Count} domain(s)");
+                var domainCount = domains?.Count ?? 0;
+                Logger.LogTrace($"Found {domainCount} domain(s)");
 
                 var discoveredLocations = new List<string>();
 
-                // Step 2: For each domain, discover certificate store directories
-                foreach (var domain in domains)
+                if (domainCount == 0)
                 {
-                    _logger.LogTrace($"Discovering filestore directories for domain: {domain.Name}");
+                    flow.Skip("DiscoverDirectories", "no domains returned");
+                }
+                else
+                {
+                    flow.Branch($"PerDomain (count={domainCount})");
                     try
                     {
-                        var directories = apiClient.ListFileStoreDirectories(domain.Name);
-                        _logger.LogTrace($"Found {directories.Count} directory(ies) in domain {domain.Name}");
-
-                        var certDirectories = directories
-                            .Where(d => CertStoreDirectories.Contains(d))
-                            .ToList();
-
-                        foreach (var dir in certDirectories)
+                        foreach (var domain in domains)
                         {
-                            var storePath = $"{domain.Name}\\{dir}";
-                            _logger.LogTrace($"Discovered certificate store: {storePath}");
-                            discoveredLocations.Add(storePath);
+                            if (string.IsNullOrWhiteSpace(domain?.Name))
+                            {
+                                flow.Skip("Domain", "empty domain name");
+                                continue;
+                            }
+
+                            try
+                            {
+                                List<string> directories = null;
+                                flow.Step($"ListFileStore-{domain.Name}", () =>
+                                {
+                                    directories = apiClient.ListFileStoreDirectories(domain.Name);
+                                });
+
+                                var certDirectories = directories
+                                    .Where(d => CertStoreDirectories.Contains(d))
+                                    .ToList();
+
+                                foreach (var dir in certDirectories)
+                                {
+                                    var storePath = $"{domain.Name}\\{dir}";
+                                    discoveredLocations.Add(storePath);
+                                    flow.Step($"Discovered-{storePath}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Resilient by design: one inaccessible domain should not abort discovery
+                                var inner = DescribeException(ex);
+                                flow.Skip($"Domain-{domain.Name}", $"unable to list directories: {inner}");
+                                Logger.LogWarning(ex, "Unable to list filestore directories for domain {DomainName}: {ErrorMessage}",
+                                    domain.Name, inner);
+                            }
                         }
                     }
-                    catch (Exception ex)
+                    finally
                     {
-                        _logger.LogWarning($"Unable to list filestore directories for domain {domain.Name}: {LogHandler.FlattenException(ex)}");
+                        flow.EndBranch();
                     }
                 }
 
-                _logger.LogTrace($"Discovery complete. Found {discoveredLocations.Count} certificate store location(s).");
+                flow.Step("SubmitDiscovery", () => submitDiscovery.Invoke(discoveredLocations),
+                    $"locationCount={discoveredLocations.Count}");
 
-                submitDiscovery.Invoke(discoveredLocations);
+                Logger.MethodExit(LogLevel.Debug);
 
-                _logger.MethodExit(LogLevel.Debug);
-
-                return new JobResult
-                {
-                    Result = OrchestratorJobStatusJobResult.Success,
-                    JobHistoryId = config.JobHistoryId
-                };
+                flow.Step("Result", $"SUCCESS - {discoveredLocations.Count} locations discovered");
+                return SuccessResult(config.JobHistoryId, flow.GetSummary());
             }
             catch (Exception e)
             {
-                _logger.LogError($"Error In Discovery.PerformDiscovery: {LogHandler.FlattenException(e)}");
-                throw;
+                var msg = DescribeException(e);
+                flow.Fail("PerformDiscovery", msg);
+                Logger.LogError(e, "Error In Discovery.PerformDiscovery: {ErrorMessage}", LogHandler.FlattenException(e));
+                return FailureResult(config.JobHistoryId, $"Discovery failed: {msg}", flow);
             }
         }
     }

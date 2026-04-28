@@ -1,11 +1,11 @@
 // Copyright 2023 Keyfactor
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,28 +19,18 @@ using Keyfactor.Orchestrators.Common.Enums;
 using Keyfactor.Orchestrators.Extensions;
 using Keyfactor.Orchestrators.Extensions.Interfaces;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
 {
-    public class Inventory : IInventoryJobExtension
+    public class Inventory : JobBase, IInventoryJobExtension
     {
-        private readonly ILogger _logger;
         private readonly RequestManager _reqManager;
         private string _protocol;
-        private readonly IPAMSecretResolver _resolver;
 
-        public Inventory(IPAMSecretResolver resolver)
+        public Inventory(IPAMSecretResolver resolver) : base(resolver)
         {
-            _logger = LogHandler.GetClassLogger<Inventory>();
+            Logger = LogHandler.GetClassLogger<Inventory>();
             _reqManager = new RequestManager(resolver);
-            _resolver = resolver;
-        }
-
-        private string ResolvePamField(string name, string value)
-        {
-            _logger.LogTrace($"Attempting to resolved PAM eligible field {name}");
-            return _resolver.Resolve(value);
         }
 
         public string ExtensionName => "DataPower";
@@ -48,54 +38,101 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
         public JobResult ProcessJob(InventoryJobConfiguration jobConfiguration,
             SubmitInventoryUpdate submitInventoryUpdate)
         {
-            try
+            if (jobConfiguration == null)
             {
-                _logger.MethodEntry(LogLevel.Debug);
-                return PerformInventory(jobConfiguration, submitInventoryUpdate);
+                Logger.LogError("ProcessJob called with null jobConfiguration.");
+                return FailureResult(0, "InventoryJobConfiguration is null.");
             }
-            catch (Exception e)
+
+            if (submitInventoryUpdate == null)
             {
-                _logger.LogError($"Error In Inventory.ProcessJob: {LogHandler.FlattenException(e)}");
-                return new JobResult
+                Logger.LogError("ProcessJob called with null submitInventoryUpdate.");
+                return FailureResult(jobConfiguration.JobHistoryId, "SubmitInventoryUpdate delegate is null.");
+            }
+
+            using (var flow = new FlowLogger(Logger, "Inventory-ProcessJob"))
+            {
+                try
                 {
-                    FailureMessage = $"Unknown Exception Occured In ProcessJob: {LogHandler.FlattenException(e)}",
-                    JobHistoryId = jobConfiguration.JobHistoryId,
-                    Result = OrchestratorJobStatusJobResult.Failure
-                };
+                    Logger.MethodEntry(LogLevel.Debug);
+
+                    flow.Step("ValidateConfig", () =>
+                    {
+                        if (jobConfiguration.CertificateStoreDetails == null)
+                            throw new ArgumentNullException(nameof(jobConfiguration),
+                                "CertificateStoreDetails is null.");
+                        if (string.IsNullOrWhiteSpace(jobConfiguration.CertificateStoreDetails.ClientMachine))
+                            throw new ArgumentException("ClientMachine is null or empty.");
+                        if (string.IsNullOrWhiteSpace(jobConfiguration.CertificateStoreDetails.StorePath))
+                            throw new ArgumentException("StorePath is null or empty.");
+                    });
+
+                    return PerformInventory(jobConfiguration, submitInventoryUpdate, flow);
+                }
+                catch (Exception e)
+                {
+                    var msg = DescribeException(e);
+                    flow.Fail("ProcessJob", msg);
+                    Logger.LogError(e, "Error In Inventory.ProcessJob: {ErrorMessage}", LogHandler.FlattenException(e));
+                    return FailureResult(jobConfiguration.JobHistoryId,
+                        $"Unknown Exception Occured In ProcessJob: {msg}", flow);
+                }
             }
         }
 
-        private JobResult PerformInventory(InventoryJobConfiguration config, SubmitInventoryUpdate submitInventory)
+        private JobResult PerformInventory(InventoryJobConfiguration config, SubmitInventoryUpdate submitInventory, FlowLogger flow)
         {
             try
             {
-                _logger.LogTrace("Parse: Certificate Inventory: " + config.CertificateStoreDetails.StorePath);
-                var ci = Utility.ParseCertificateConfig(config);
-                _protocol = ci.Protocol;
-                _logger.LogTrace(
-                    $"Certificate Config Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
-                _logger.LogTrace("Entering IBM DataPower: Certificate Inventory");
-                _logger.LogTrace(
-                    $"Entering processJob for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
+                CertStoreInfo ci = null;
+                flow.Step("ParseCertificateConfig", () =>
+                {
+                    Logger.LogTrace("Parse: Certificate Inventory: " + config.CertificateStoreDetails.StorePath);
+                    ci = Utility.ParseCertificateConfig(config);
+                    if (ci == null)
+                        throw new InvalidOperationException("Failed to parse certificate store configuration.");
+                    _protocol = ci.Protocol;
+                }, $"storePath={config.CertificateStoreDetails.StorePath}");
 
-                var apiClient = new DataPowerClient(ResolvePamField("ServerUserName",config.ServerUsername), ResolvePamField("ServerPassword",config.ServerPassword),
-                    $"{_protocol}://" + config.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
+                Logger.LogTrace($"Certificate Config Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
+
+                DataPowerClient apiClient = null;
+                flow.Step("CreateApiClient", () =>
+                {
+                    apiClient = new DataPowerClient(
+                        ResolvePamField("ServerUserName", config.ServerUsername),
+                        ResolvePamField("ServerPassword", config.ServerPassword),
+                        $"{_protocol}://" + config.CertificateStoreDetails.ClientMachine.Trim(),
+                        ci.Domain);
+                }, $"domain={ci.Domain}, host={config.CertificateStoreDetails.ClientMachine}");
 
                 var publicCertStoreName = ci.PublicCertStoreName;
-                _logger.LogTrace($"$Public Store name is {publicCertStoreName}");
+                Logger.LogTrace($"$Public Store name is {publicCertStoreName}");
 
-            var storePath = config.CertificateStoreDetails.StorePath; 
-            
-            var inventoryResult = storePath.Contains(publicCertStoreName)
-                ? _reqManager.GetPublicCerts(config,apiClient,submitInventory,ci)
-                : _reqManager.GetCerts(config,apiClient,submitInventory,ci);
+                var storePath = config.CertificateStoreDetails.StorePath;
+                var inventoryResult = flow.Step<JobResult>(
+                    storePath.Contains(publicCertStoreName) ? "GetPublicCerts" : "GetCerts",
+                    () => storePath.Contains(publicCertStoreName)
+                        ? _reqManager.GetPublicCerts(config, apiClient, submitInventory, ci)
+                        : _reqManager.GetCerts(config, apiClient, submitInventory, ci));
 
+                flow.Step("Result", $"{inventoryResult.Result}");
+
+                // Append flow summary to result message so operators see the breadcrumb
+                if (inventoryResult.Result == OrchestratorJobStatusJobResult.Success)
+                {
+                    return SuccessResult(config.JobHistoryId, flow.GetSummary());
+                }
+
+                inventoryResult.FailureMessage = $"{inventoryResult.FailureMessage}\n\n{flow.GetSummary()}";
                 return inventoryResult;
             }
             catch (Exception e)
             {
-                _logger.LogError($"Error In Inventory.PerformInventory: {LogHandler.FlattenException(e)}");
-                throw;
+                var msg = DescribeException(e);
+                flow.Fail("PerformInventory", msg);
+                Logger.LogError(e, "Error In Inventory.PerformInventory: {ErrorMessage}", LogHandler.FlattenException(e));
+                return FailureResult(config.JobHistoryId, $"Inventory failed: {msg}", flow);
             }
         }
     }
