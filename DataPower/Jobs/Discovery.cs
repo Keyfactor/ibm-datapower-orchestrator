@@ -143,8 +143,12 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                                     directories = apiClient.ListFileStoreDirectories(domain.Name);
                                 });
 
+                                // DataPower's filestore location names carry a trailing colon
+                                // (e.g. "cert:" / "pubcert:" / "sharedcert:"). Strip it before
+                                // matching and before composing the store path.
                                 var certDirectories = directories
-                                    .Where(d => CertStoreDirectories.Contains(d))
+                                    .Select(d => d?.TrimEnd(':'))
+                                    .Where(d => !string.IsNullOrEmpty(d) && CertStoreDirectories.Contains(d))
                                     .ToList();
 
                                 foreach (var dir in certDirectories)

@@ -114,9 +114,9 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Client
                 var strResponse = ApiRequestString("ListFileStoreDirectories", request.GetResource(), request.Method,
                     string.Empty, false, true);
 
-                var containerName = "directory";
+                var containerName = "location";
 
-                // DataPower returns a single object instead of array when only one directory exists
+                // DataPower returns a single object instead of an array when only one location exists
                 if (strResponse.Contains($"\"{containerName}\"") &&
                     !strResponse.Contains($"\"{containerName}\" : [") &&
                     !strResponse.Contains($"\"{containerName}\":["))
@@ -125,10 +125,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Client
                 }
 
                 var response = JsonConvert.DeserializeObject<ListFileStoreResponse>(strResponse);
-                if (response?.FileStore?.Directories == null)
+                if (response?.FileStore?.Locations == null)
                     return new List<string>();
 
-                return response.FileStore.Directories
+                return response.FileStore.Locations
                     .Select(d => d.Name)
                     .ToList();
             }

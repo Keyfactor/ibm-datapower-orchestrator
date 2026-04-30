@@ -24,6 +24,6 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.Responses
 
     public class FileStoreContent
     {
-        [JsonProperty("directory")] public FileStoreDirectory[] Directories { get; set; }
+        [JsonProperty("location")] public FileStoreLocation[] Locations { get; set; }
     }
 }

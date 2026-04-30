@@ -164,7 +164,7 @@ Returns the top-level filestore directories for a specific domain. The orchestra
 | `Models/Responses/ListDomainsResponse.cs` | Response deserialization for domain listing. Includes single-item variant for DataPower JSON quirk. |
 | `Models/Responses/ListFileStoreResponse.cs` | Response deserialization for filestore directory listing. |
 | `Models/SupportingObjects/DomainInfo.cs` | Domain name and href properties from the DataPower domains API. |
-| `Models/SupportingObjects/FileStoreDirectory.cs` | Directory name and href properties from the filestore API. |
+| `Models/SupportingObjects/FileStoreLocation.cs` | Name and href of one entry in `filestore.location[]` (e.g. `cert:`, `pubcert:`, `sharedcert:`). |
 
 ### Modified Files
 

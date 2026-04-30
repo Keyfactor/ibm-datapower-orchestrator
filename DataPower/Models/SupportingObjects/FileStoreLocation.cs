@@ -16,7 +16,9 @@ using Newtonsoft.Json;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects
 {
-    public class FileStoreDirectory
+    // One entry in the GET /mgmt/filestore/{domain} response. DataPower returns
+    // these under filestore.location[] with names like "cert:" / "pubcert:" / "sharedcert:".
+    public class FileStoreLocation
     {
         [JsonProperty("name")] public string Name { get; set; }
 
