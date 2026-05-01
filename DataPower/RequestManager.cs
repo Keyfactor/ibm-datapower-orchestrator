@@ -1042,7 +1042,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public JobResult GetPublicCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
-            SubmitInventoryUpdate submitInventory, CertStoreInfo ci)
+            SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
             {
@@ -1063,6 +1063,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 // ReSharper disable once CollectionNeverQueried.Local
                 var inventoryItems = new List<CurrentInventoryItem>();
                 var pubFiles = viewCertificateCollection?.PubFileStoreLocation?.PubFileStore?.PubFiles;
+                flow?.Step("GetPublicCerts.ParseResponse", $"pubFileCount={pubFiles?.Length ?? 0}, blacklistCount={blackList.Count}");
                 if (pubFiles != null)
                     foreach (var pc in pubFiles)
                     {
@@ -1116,6 +1117,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                     }
 
                 _logger.LogTrace($"Inventory Items: {JsonConvert.SerializeObject(inventoryItems)}");
+                flow?.Step("GetPublicCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
                 submitInventory.Invoke(inventoryItems);
                 _logger.LogTrace("Submitted Inventory Items...");
 
@@ -1134,7 +1136,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public JobResult GetCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
-            SubmitInventoryUpdate submitInventory, CertStoreInfo ci)
+            SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
             {
@@ -1150,6 +1152,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 _logger.LogTrace("Start loop");
 
                 var cryptoCerts = viewCertificateCollection?.CryptoCertificates ?? Array.Empty<CryptoCertificate>();
+                flow?.Step("GetCerts.ParseResponse", $"certCount={cryptoCerts.Length}, blacklistCount={blackList.Count}");
                 foreach (var cc in cryptoCerts)
                     if (cc != null && !string.IsNullOrEmpty(cc.Name))
                     {
@@ -1194,7 +1197,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                         }
                     }
 
+                _logger.LogTrace($"Submitting {inventoryItems.Count} inventory items");
+                flow?.Step("GetCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
                 submitInventory.Invoke(inventoryItems);
+                _logger.LogTrace("Submitted Inventory Items.");
 
                 return new JobResult
                 {

@@ -113,8 +113,8 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                 var inventoryResult = flow.Step<JobResult>(
                     storePath.Contains(publicCertStoreName) ? "GetPublicCerts" : "GetCerts",
                     () => storePath.Contains(publicCertStoreName)
-                        ? _reqManager.GetPublicCerts(config, apiClient, submitInventory, ci)
-                        : _reqManager.GetCerts(config, apiClient, submitInventory, ci));
+                        ? _reqManager.GetPublicCerts(config, apiClient, submitInventory, ci, flow)
+                        : _reqManager.GetCerts(config, apiClient, submitInventory, ci, flow));
 
                 flow.Step("Result", $"{inventoryResult.Result}");
 
