@@ -58,6 +58,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             return _resolver.Resolve(value);
         }
 
+        // Parse the InventoryBlackList store property into a case-insensitive set.
+        // Tolerates null/empty (Command may send the property as JSON null when the user
+        // leaves the field blank, which DefaultValueHandling.Populate doesn't override).
+        private static HashSet<string> ParseInventoryBlacklist(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            return new HashSet<string>(
+                raw.Split(',').Select(s => s.Trim()).Where(s => s.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
         public bool DoesCryptoCertificateObjectExist(CertStoreInfo ci, string cryptoCertObjectName,
             DataPowerClient apiClient)
         {
@@ -1029,7 +1042,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public JobResult GetPublicCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
-            SubmitInventoryUpdate submitInventory, CertStoreInfo ci)
+            SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
             {
@@ -1040,19 +1053,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 _logger.LogTrace($"Public Cert List Response {JsonConvert.SerializeObject(viewCertificateCollection)}");
 
                 var intCount = 0;
-                var s = ci.InventoryBlackList.Split(',');
-
+                var blackList = ParseInventoryBlacklist(ci.InventoryBlackList);
                 var intMax = ci.InventoryPageSize;
-                var blackList = s;
 
-                _logger.LogTrace($"Max Inventory: {intMax} Inventory Black List Count: {blackList.Length}");
+                _logger.LogTrace($"Max Inventory: {intMax} Inventory Black List Count: {blackList.Count}");
 
                 _logger.LogTrace("Got App Config Settings from File");
 
                 // ReSharper disable once CollectionNeverQueried.Local
                 var inventoryItems = new List<CurrentInventoryItem>();
-                if (viewCertificateCollection.PubFileStoreLocation.PubFileStore?.PubFiles != null)
-                    foreach (var pc in viewCertificateCollection.PubFileStoreLocation.PubFileStore.PubFiles)
+                var pubFiles = viewCertificateCollection?.PubFileStoreLocation?.PubFileStore?.PubFiles;
+                flow?.Step("GetPublicCerts.ParseResponse", $"pubFileCount={pubFiles?.Length ?? 0}, blacklistCount={blackList.Count}");
+                if (pubFiles != null)
+                    foreach (var pc in pubFiles)
                     {
                         _logger.LogTrace($"Looping through public files: {pc.Name}");
                         var viewCertDetail = new ViewPubCertificateDetailRequest(pc.Name);
@@ -1104,6 +1117,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                     }
 
                 _logger.LogTrace($"Inventory Items: {JsonConvert.SerializeObject(inventoryItems)}");
+                flow?.Step("GetPublicCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
                 submitInventory.Invoke(inventoryItems);
                 _logger.LogTrace("Submitted Inventory Items...");
 
@@ -1122,7 +1136,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public JobResult GetCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
-            SubmitInventoryUpdate submitInventory, CertStoreInfo ci)
+            SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
             {
@@ -1133,13 +1147,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 _logger.LogTrace($"Get Certs Response: {JsonConvert.SerializeObject(viewCertificateCollection)}");
                 // ReSharper disable once CollectionNeverQueried.Local
                 var inventoryItems = new List<CurrentInventoryItem>();
-                var s = ci.InventoryBlackList.Split(',');
-                var blackList = s;
+                var blackList = ParseInventoryBlacklist(ci.InventoryBlackList);
 
                 _logger.LogTrace("Start loop");
 
-                foreach (var cc in viewCertificateCollection.CryptoCertificates)
-                    if (!string.IsNullOrEmpty(cc.Name))
+                var cryptoCerts = viewCertificateCollection?.CryptoCertificates ?? Array.Empty<CryptoCertificate>();
+                flow?.Step("GetCerts.ParseResponse", $"certCount={cryptoCerts.Length}, blacklistCount={blackList.Count}");
+                foreach (var cc in cryptoCerts)
+                    if (cc != null && !string.IsNullOrEmpty(cc.Name))
                     {
                         _logger.LogTrace($"Looping through Certificate Store files: {cc.Name}");
 
@@ -1182,7 +1197,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                         }
                     }
 
+                _logger.LogTrace($"Submitting {inventoryItems.Count} inventory items");
+                flow?.Step("GetCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
                 submitInventory.Invoke(inventoryItems);
+                _logger.LogTrace("Submitted Inventory Items.");
 
                 return new JobResult
                 {
