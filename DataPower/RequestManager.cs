@@ -769,6 +769,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 var storePath = addConfig.CertificateStoreDetails.StorePath;
                 _logger.LogTrace($"publicCertStoreName: {publicCertStoreName} storePath: {storePath}");
 
+                // pubcert and sharedcert are appliance-wide on DataPower (owned by the
+                // default domain). DataPower's REST mgmt rejects writes through any
+                // non-default domain context with a 403. Reject upfront with a clear
+                // message instead of letting the appliance's "Forbidden." come back.
                 if (storePath.Contains("pubcert"))
                 {
                     if (storePath != publicCertStoreName && (storePath != "default\\" + publicCertStoreName))
@@ -778,6 +782,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                             Result = OrchestratorJobStatusJobResult.Failure,
                             JobHistoryId = addConfig.JobHistoryId,
                             FailureMessage = "You can only add to pubcert on the default domain"
+                        };
+                    }
+                }
+
+                if (storePath.Contains("sharedcert"))
+                {
+                    if (storePath != "sharedcert" && storePath != "default\\sharedcert")
+                    {
+                        return new JobResult
+                        {
+                            Result = OrchestratorJobStatusJobResult.Failure,
+                            JobHistoryId = addConfig.JobHistoryId,
+                            FailureMessage = "You can only add to sharedcert on the default domain"
                         };
                     }
                 }
@@ -883,8 +900,27 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
             catch (Exception ex)
             {
-                _logger.LogTrace($"Error on {alias}: {LogHandler.FlattenException(ex)}");
-                apiClient.SaveConfig();
+                // Silent-failure trap fix: this catch used to log Trace, run SaveConfig
+                // (persisting whatever partial state the appliance had reached when the
+                // Add blew up), and fall through to return Success. So a 403 / 404 / 500
+                // from DataPower would surface as a green checkmark in Command with no
+                // cert anywhere on the appliance. Now: log Error and propagate Failure
+                // with the appliance's response body when available.
+                var apiEx = DataPowerApiException.Find(ex);
+                var detail = apiEx != null
+                    ? $"{apiEx.Operation} returned HTTP {(int)apiEx.StatusCode} {apiEx.StatusCode}: {apiEx.ResponseBody}"
+                    : ex.Message;
+
+                _logger.LogError(ex,
+                    "Add to {Domain}\\{Store} failed for alias {Alias}: {ErrorMessage}",
+                    ci.Domain, ci.CertificateStore, alias, LogHandler.FlattenException(ex));
+
+                return new JobResult
+                {
+                    Result = OrchestratorJobStatusJobResult.Failure,
+                    JobHistoryId = addConfig.JobHistoryId,
+                    FailureMessage = $"Add failed for '{alias}' on {ci.Domain}\\{ci.CertificateStore}: {detail}"
+                };
             }
 
             _logger.MethodExit(LogLevel.Debug);

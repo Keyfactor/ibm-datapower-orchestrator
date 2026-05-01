@@ -32,11 +32,11 @@ A typical enterprise DataPower deployment with multiple environments, each conta
 
 | Environment | Impact |
 |-------------|--------|
-| Production  | 50 domains x 2 cert stores = **100 store definitions** auto-discovered in one job |
-| Test        | 40 domains x 2 cert stores = **80 store definitions** auto-discovered in one job |
-| Dev         | 30 domains x 2 cert stores = **60 store definitions** auto-discovered in one job |
-| Sandbox     | 20 domains x 2 cert stores = **40 store definitions** auto-discovered in one job |
-| **Total**   | **280 cert store definitions** - discovered automatically with 4 Discovery jobs |
+| Production  | 50 per-domain `cert` stores + `default\pubcert` + `default\sharedcert` = **52 stores** auto-discovered in one job |
+| Test        | 40 per-domain `cert` stores + `default\pubcert` + `default\sharedcert` = **42 stores** auto-discovered in one job |
+| Dev         | 30 per-domain `cert` stores + `default\pubcert` + `default\sharedcert` = **32 stores** auto-discovered in one job |
+| Sandbox     | 20 per-domain `cert` stores + `default\pubcert` + `default\sharedcert` = **22 stores** auto-discovered in one job |
+| **Total**   | **148 cert store definitions** - discovered automatically with 4 Discovery jobs |
 
 ---
 
@@ -68,11 +68,15 @@ or
 
 Each domain + directory combination is formatted as a store path using the existing convention: `domain\directory` (e.g., `production-api\cert`).
 
+> **Appliance-wide stores collapse to default.** `pubcert` and `sharedcert` are physically a single store on the appliance, owned by the `default` domain (other domains can read them but writes return HTTP 403). Discovery emits each appliance-wide directory **only once**, under `default` — `default\pubcert` and `default\sharedcert`. Per-domain `cert/` is emitted for every domain. So a 10-domain appliance produces 12 store paths (10 × `<domain>\cert` plus `default\pubcert` and `default\sharedcert`), not 30.
+
 ### Step 5: Submit to Keyfactor Command
 
 All discovered store paths are submitted back to Keyfactor via the `SubmitDiscoveryUpdate` callback. Keyfactor Command can then auto-create the corresponding certificate store definitions.
 
 > **Resilient by design:** If the orchestrator cannot access a specific domain's filestore (e.g., due to permissions), it logs a warning and continues discovering the remaining domains. One inaccessible domain does not block the entire job.
+
+> **Migration note for existing deployments:** Earlier versions emitted `<each-domain>\pubcert` and `<each-domain>\sharedcert` for every domain. If you've previously approved any of those non-default entries as cert stores, they're now orphaned (they alias the same physical data and Add/Remove against them is rejected by the appliance). Re-run Discovery, approve the canonical `default\pubcert` and `default\sharedcert`, and remove the duplicates.
 
 ---
 
@@ -86,11 +90,13 @@ All operations in the DataPower Orchestrator (Discovery, Inventory, Add, Remove)
 
 ### Certificate Store Directories
 
-| Directory     | Scope           | Contents |
-|---------------|-----------------|----------|
-| `cert`        | Per-domain      | Domain-specific certificates and private keys (CryptoCertificate/CryptoKey objects) |
-| `pubcert`     | Appliance-wide  | Public/trusted certificates shared across all domains |
-| `sharedcert`  | Appliance-wide  | Shared certificates that persist across firmware upgrades |
+| Directory     | Scope           | Discovery emits as          | Contents |
+|---------------|-----------------|-----------------------------|----------|
+| `cert`        | Per-domain      | `<domain>\cert` (each domain) | Domain-specific certificates and private keys (CryptoCertificate/CryptoKey objects) |
+| `pubcert`     | Appliance-wide  | `default\pubcert` (once)    | Public/trusted certificates shared across all domains |
+| `sharedcert`  | Appliance-wide  | `default\sharedcert` (once) | Shared certificates that persist across firmware upgrades |
+
+Add and Remove against `<non-default>\pubcert` or `<non-default>\sharedcert` are rejected by the orchestrator with a clear failure message — DataPower itself returns HTTP 403 for these, since appliance-wide stores can only be mutated through the `default` domain.
 
 ### Examples
 

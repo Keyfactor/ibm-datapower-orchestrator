@@ -543,15 +543,15 @@
                     <div class="sg-header">Environment</div>
                     <div class="sg-header">Impact</div>
                     <div class="sg-label">Production</div>
-                    <div class="sg-value">50 domains &times; 2 cert stores = <strong>100 store definitions</strong> auto-discovered in one job</div>
+                    <div class="sg-value">50 per-domain <code>cert</code> + <code>default\pubcert</code> + <code>default\sharedcert</code> = <strong>52 stores</strong> auto-discovered in one job</div>
                     <div class="sg-label">Test</div>
-                    <div class="sg-value">40 domains &times; 2 cert stores = <strong>80 store definitions</strong> auto-discovered in one job</div>
+                    <div class="sg-value">40 per-domain <code>cert</code> + <code>default\pubcert</code> + <code>default\sharedcert</code> = <strong>42 stores</strong> auto-discovered in one job</div>
                     <div class="sg-label">Dev</div>
-                    <div class="sg-value">30 domains &times; 2 cert stores = <strong>60 store definitions</strong> auto-discovered in one job</div>
+                    <div class="sg-value">30 per-domain <code>cert</code> + <code>default\pubcert</code> + <code>default\sharedcert</code> = <strong>32 stores</strong> auto-discovered in one job</div>
                     <div class="sg-label">Sandbox</div>
-                    <div class="sg-value">20 domains &times; 2 cert stores = <strong>40 store definitions</strong> auto-discovered in one job</div>
+                    <div class="sg-value">20 per-domain <code>cert</code> + <code>default\pubcert</code> + <code>default\sharedcert</code> = <strong>22 stores</strong> auto-discovered in one job</div>
                     <div class="sg-label" style="border-radius: 0 0 0 8px; font-weight: 700; color: var(--primary-dark);">Total</div>
-                    <div class="sg-value" style="border-radius: 0 0 8px 0; font-weight: 700; color: var(--primary-dark);">280 cert store definitions &mdash; discovered automatically with 4 Discovery jobs</div>
+                    <div class="sg-value" style="border-radius: 0 0 8px 0; font-weight: 700; color: var(--primary-dark);">148 cert store definitions &mdash; discovered automatically with 4 Discovery jobs</div>
                 </div>
             </div>
         </section>
@@ -596,7 +596,7 @@
                         <div class="flow-number">3</div>
                         <div class="flow-content">
                             <div class="step-title">Discover Certificate Stores Per Domain</div>
-                            <p class="step-detail">For each domain found, the orchestrator calls <code>GET /mgmt/filestore/{domain}</code> to list the top-level filestore directories. It filters those names against the Discovery job's <strong>Directories to search</strong> field (comma-separated, e.g. <code>cert,pubcert,sharedcert</code>). When the field is empty, the orchestrator falls back to the standard set: <code>cert</code>, <code>pubcert</code>, <code>sharedcert</code>. The trailing colon DataPower returns on each location name is stripped before matching. The FlowLogger summary records which list was used (<code>source=user</code> vs <code>source=default</code>).</p>
+                            <p class="step-detail">For each domain found, the orchestrator calls <code>GET /mgmt/filestore/{domain}</code> to list the top-level filestore directories. It filters those names against the Discovery job's <strong>Directories to search</strong> field (comma-separated, e.g. <code>cert,pubcert,sharedcert</code>). When the field is empty, the orchestrator falls back to the standard set: <code>cert</code>, <code>pubcert</code>, <code>sharedcert</code>. The trailing colon DataPower returns on each location name is stripped before matching. The FlowLogger summary records which list was used (<code>source=user</code> vs <code>source=default</code>). <strong>Appliance-wide directories (<code>pubcert</code>, <code>sharedcert</code>) are emitted only under <code>default</code></strong> — other domains can read them through their filestore view, but they alias the same physical data and writes through any non-default context are rejected by DataPower with HTTP 403. So Discovery surfaces <code>default\pubcert</code> and <code>default\sharedcert</code> exactly once, and per-domain <code>&lt;domain&gt;\cert</code> for each domain.</p>
                         </div>
                     </div>
 

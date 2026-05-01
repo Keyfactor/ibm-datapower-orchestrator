@@ -35,6 +35,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
             "sharedcert"
         };
 
+        // pubcert and sharedcert are appliance-wide on DataPower (owned by the
+        // default domain) - other domains can read them but writes must go through
+        // default. Discovery emits these only under "default" so operators don't
+        // get N copies of the same physical store, one per domain, all aliasing
+        // each other.
+        private static readonly HashSet<string> ApplianceWideDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "pubcert",
+            "sharedcert"
+        };
+
+        private const string DefaultDomainName = "default";
+
         // Keyfactor Command's Discovery form posts the comma-separated "Directories
         // to search" value into JobProperties. Try the common key names since the
         // exact casing has shifted across Command versions.
@@ -186,8 +199,15 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                                     .Where(d => !string.IsNullOrEmpty(d) && certStoreDirectories.Contains(d))
                                     .ToList();
 
+                                var isDefault = string.Equals(domain.Name, DefaultDomainName, StringComparison.OrdinalIgnoreCase);
                                 foreach (var dir in certDirectories)
                                 {
+                                    if (ApplianceWideDirectories.Contains(dir) && !isDefault)
+                                    {
+                                        flow.Skip($"{domain.Name}\\{dir}", "appliance-wide; emitted only under default");
+                                        continue;
+                                    }
+
                                     var storePath = $"{domain.Name}\\{dir}";
                                     discoveredLocations.Add(storePath);
                                     flow.Step($"Discovered-{storePath}");
