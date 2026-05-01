@@ -542,9 +542,11 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Client
                     }
                 }
 
-                _logger.LogError(webEx, "END APIRequestString error: {ErrorMessage}", LogHandler.FlattenException(webEx));
+                _logger.LogError(webEx,
+                    "END APIRequestString error for {Operation}: HTTP {Status} {StatusName}, body: {Body}",
+                    strCall, (int)statusCode, statusCode, responseBody);
                 throw new DataPowerApiException(
-                    $"DataPower API call '{strCall}' failed with HTTP {(int)statusCode} {statusCode}.",
+                    $"DataPower API call '{strCall}' failed with HTTP {(int)statusCode} {statusCode}. Body: {responseBody}",
                     statusCode, strCall, responseBody, webEx);
             }
             catch (DataPowerApiException)
