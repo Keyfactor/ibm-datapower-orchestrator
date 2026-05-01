@@ -1,12 +1,87 @@
 ## Overview
 
-The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported. This integration can add/replace certificates in any domain\directory combination. 
+The IBM DataPower Orchestrator allows for the management of certificates in the IBM DataPower platform. Discovery, Inventory, Add and Remove functions are supported. This integration can manage certificates in any domain and certificate store directory on a DataPower appliance.
 
 * DataPower
 
 ## Requirements
-The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported.  This integration can add/replace certificates in any domain\directory combination.  For example default\pubcert
 
+The IBM DataPower Orchestrator requires:
+- A DataPower appliance with the REST Management Interface enabled (typically port 5554)
+- API credentials with access to certificate management operations
+- HTTPS connectivity between the Keyfactor Orchestrator and the DataPower appliance
+
+## Store Path Format
+
+The Store Path identifies which domain and certificate store directory to target on the DataPower appliance. All Inventory, Management (Add/Remove), and Discovery operations use this format.
+
+### Format
+
+```
+<domain>\<directory>
+```
+
+The path is composed of two parts separated by a backslash (`\`) or forward slash (`/`):
+
+| Part | Description | Examples |
+|------|-------------|----------|
+| **Domain** | The DataPower application domain. Every DataPower appliance has at least a `default` domain. Additional domains are created for environment or application isolation. | `default`, `production-api`, `staging`, `internal-services` |
+| **Directory** | The certificate store directory within that domain. DataPower has several standard directories for certificate storage. | `cert`, `pubcert`, `sharedcert` |
+
+### Certificate Store Directories
+
+| Directory | Scope | Contents |
+|-----------|-------|----------|
+| `cert` | Per-domain | Domain-specific certificates and private keys (CryptoCertificate/CryptoKey objects) |
+| `pubcert` | Appliance-wide | Public/trusted certificates shared across all domains |
+| `sharedcert` | Appliance-wide | Shared certificates that persist across firmware upgrades |
+
+### Examples
+
+| Store Path | Description |
+|------------|-------------|
+| `default\pubcert` | Public certificate store in the default domain |
+| `default\cert` | Private key certificate store in the default domain |
+| `production-api\cert` | Private key certificates in the production-api domain |
+| `testdomain\pubcert` | Public certificates in the testdomain domain |
+
+> **Tip:** The Discovery job can automatically find all valid domain and directory combinations on an appliance, eliminating the need to manually determine store paths. See [Discovery](#discovery) below.
+
+## Discovery
+
+The Discovery job automatically enumerates all domains and certificate store directories on a DataPower appliance. This is especially useful for environments with many domains, as it eliminates the need to manually create certificate store definitions.
+
+### How It Works
+
+1. **Enumerate domains** &mdash; calls `GET /mgmt/domains/config/` to list every application domain on the appliance
+2. **Discover stores per domain** &mdash; for each domain, calls `GET /mgmt/filestore/{domain}` to list the filestore directories
+3. **Filter to certificate directories** &mdash; keeps only certificate-relevant directories (`cert`, `pubcert`, `sharedcert`)
+4. **Return store paths** &mdash; submits the discovered paths (e.g., `production-api\cert`) to Keyfactor Command
+
+### Configuration
+
+Discovery requires only the appliance connection details &mdash; no store path is needed:
+
+| Field | Description |
+|-------|-------------|
+| Client Machine | The DataPower appliance hostname/IP and REST API port (e.g., `datapower.example.com:5554`) |
+| Server Username | API username for DataPower (PAM eligible) |
+| Server Password | API password for DataPower (PAM eligible) |
+
+### Example
+
+Running Discovery against an appliance with 3 domains returns paths like:
+
+```
+default\cert
+default\pubcert
+production-api\cert
+production-api\pubcert
+staging\cert
+staging\pubcert
+```
+
+Each discovered path can become a certificate store definition in Keyfactor Command, ready for Inventory and Management operations.
 
 ## Test Cases
 
