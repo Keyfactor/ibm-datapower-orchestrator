@@ -17,6 +17,8 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Collections.Generic;
+using System.Linq;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.Requests;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.Responses;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects;
@@ -71,6 +73,71 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Client
         public string Password { get; set; }
 
         #region Class Methods
+
+        public List<DomainInfo> ListDomains()
+        {
+            try
+            {
+                var request = new ListDomainsRequest();
+                var strResponse = ApiRequestString("ListDomains", request.GetResource(), request.Method,
+                    string.Empty, false, true);
+
+                var containerName = "domain";
+
+                // DataPower returns a single object instead of array when only one domain exists
+                if (strResponse.Contains($"\"{containerName}\"") &&
+                    !strResponse.Contains($"\"{containerName}\" : [") &&
+                    !strResponse.Contains($"\"{containerName}\":["))
+                {
+                    // Wrap single domain object in array for proper deserialization
+                    var singleResponse = JsonConvert.DeserializeObject<ListDomainsSingleResponse>(strResponse);
+                    return singleResponse?.Domain != null
+                        ? new List<DomainInfo> { singleResponse.Domain }
+                        : new List<DomainInfo>();
+                }
+
+                var response = JsonConvert.DeserializeObject<ListDomainsResponse>(strResponse);
+                return response?.Domains?.ToList() ?? new List<DomainInfo>();
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Error In DataPowerClient.ListDomains: {LogHandler.FlattenException(e)}");
+                throw;
+            }
+        }
+
+        public List<string> ListFileStoreDirectories(string domain)
+        {
+            try
+            {
+                var request = new ListFileStoreRequest(domain);
+                var strResponse = ApiRequestString("ListFileStoreDirectories", request.GetResource(), request.Method,
+                    string.Empty, false, true);
+
+                var containerName = "location";
+
+                // DataPower returns a single object instead of an array when only one location exists
+                if (strResponse.Contains($"\"{containerName}\"") &&
+                    !strResponse.Contains($"\"{containerName}\" : [") &&
+                    !strResponse.Contains($"\"{containerName}\":["))
+                {
+                    strResponse = FixDataPowerBadJson(strResponse, containerName);
+                }
+
+                var response = JsonConvert.DeserializeObject<ListFileStoreResponse>(strResponse);
+                if (response?.FileStore?.Locations == null)
+                    return new List<string>();
+
+                return response.FileStore.Locations
+                    .Select(d => d.Name)
+                    .ToList();
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Error In DataPowerClient.ListFileStoreDirectories: {LogHandler.FlattenException(e)}");
+                throw;
+            }
+        }
 
         public bool SaveConfig()
         {
@@ -405,8 +472,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Client
             _logger.LogTrace($"BaseUrl: {BaseUrl}");
             _logger.LogTrace($"url: {strPostUrl}");
             _logger.LogTrace($"strMethod: {strMethod}");
-            _logger.LogTrace($"strQueryString: {strQueryString}");
+            // Mask sensitive payload fields (cert/key material, passwords) before logging
+            _logger.LogTrace($"strQueryString: {MaskSensitivePayload(strQueryString)}");
 
+            HttpWebResponse objResponse = null;
             try
             {
                 ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
@@ -424,25 +493,100 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Client
                     var postBytes = Encoding.UTF8.GetBytes(strQueryString);
                     objRequest.ContentLength = postBytes.Length;
 
-                    var requestStream = objRequest.GetRequestStream();
-                    requestStream.Write(postBytes, 0, postBytes.Length);
-                    requestStream.Close();
+                    using (var requestStream = objRequest.GetRequestStream())
+                    {
+                        requestStream.Write(postBytes, 0, postBytes.Length);
+                    }
                 }
 
-                var objResponse = (HttpWebResponse) objRequest.GetResponse();
-                var strResponse =
-                    new StreamReader(objResponse.GetResponseStream() ?? throw new InvalidOperationException())
-                        .ReadToEnd();
-                _logger.LogTrace($"strResponse: {strResponse}");
-                _logger.LogTrace("END APIRequestString");
+                objResponse = (HttpWebResponse) objRequest.GetResponse();
+                using (var stream = objResponse.GetResponseStream() ?? throw new InvalidOperationException("Response stream is null."))
+                using (var reader = new StreamReader(stream))
+                {
+                    var strResponse = reader.ReadToEnd();
+                    _logger.LogTrace($"strResponse: {strResponse}");
+                    _logger.LogTrace("END APIRequestString");
+                    return strResponse;
+                }
+            }
+            catch (WebException webEx)
+            {
+                // Extract status code and response body from the failed response so the
+                // typed DataPowerApiException can carry both back to the operator.
+                var statusCode = HttpStatusCode.InternalServerError;
+                var responseBody = string.Empty;
 
-                return strResponse;
+                if (webEx.Response is HttpWebResponse errorResponse)
+                {
+                    statusCode = errorResponse.StatusCode;
+                    try
+                    {
+                        using (var stream = errorResponse.GetResponseStream())
+                        {
+                            if (stream != null)
+                            {
+                                using (var reader = new StreamReader(stream))
+                                {
+                                    responseBody = reader.ReadToEnd();
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception readEx)
+                    {
+                        _logger.LogWarning(readEx, "Failed to read error response body for {Operation}.", strCall);
+                    }
+                    finally
+                    {
+                        errorResponse.Dispose();
+                    }
+                }
+
+                _logger.LogError(webEx, "END APIRequestString error: {ErrorMessage}", LogHandler.FlattenException(webEx));
+                throw new DataPowerApiException(
+                    $"DataPower API call '{strCall}' failed with HTTP {(int)statusCode} {statusCode}.",
+                    statusCode, strCall, responseBody, webEx);
+            }
+            catch (DataPowerApiException)
+            {
+                // Already typed - just rethrow
+                throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"END APIRequestString error: {LogHandler.FlattenException(ex)}");
+                _logger.LogError(ex, "END APIRequestString error: {ErrorMessage}", LogHandler.FlattenException(ex));
                 throw;
             }
+            finally
+            {
+                objResponse?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Masks sensitive fields (cert content, private keys, passwords) in a JSON payload
+        /// before it goes into trace logs. Only the value portion is replaced - keys remain
+        /// readable so operators can see the request shape.
+        /// </summary>
+        private static string MaskSensitivePayload(string payload)
+        {
+            if (string.IsNullOrEmpty(payload)) return payload;
+
+            // Quick check: if no sensitive markers exist, skip the regex work
+            if (payload.IndexOf("content", StringComparison.OrdinalIgnoreCase) < 0
+                && payload.IndexOf("Password", StringComparison.OrdinalIgnoreCase) < 0
+                && payload.IndexOf("BEGIN", StringComparison.Ordinal) < 0)
+            {
+                return payload;
+            }
+
+            // Replace string values for known-sensitive keys: "content", "Password", "PasswordAlias"
+            var masked = System.Text.RegularExpressions.Regex.Replace(
+                payload,
+                "\"(content|Password|PasswordAlias)\"\\s*:\\s*\"[^\"]*\"",
+                "\"$1\":\"***MASKED***\"",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return masked;
         }
 
         #endregion

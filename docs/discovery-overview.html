@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBM DataPower Orchestrator - Discovery Feature</title>
+    <style>
+        :root {
+            --primary: #0f62fe;
+            --primary-dark: #0043ce;
+            --success: #198038;
+            --warning: #f1c21b;
+            --danger: #da1e28;
+            --gray-10: #f4f4f4;
+            --gray-20: #e0e0e0;
+            --gray-30: #c6c6c6;
+            --gray-50: #8d8d8d;
+            --gray-70: #525252;
+            --gray-90: #262626;
+            --gray-100: #161616;
+            --white: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--gray-90);
+            line-height: 1.6;
+            background: var(--gray-10);
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--gray-100) 0%, #2d3748 100%);
+            color: var(--white);
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.2rem;
+            font-weight: 300;
+            margin-bottom: 0.5rem;
+        }
+
+        .header h1 strong {
+            font-weight: 600;
+        }
+
+        .header .subtitle {
+            font-size: 1.1rem;
+            color: var(--gray-30);
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            letter-spacing: 0.5px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        section {
+            margin-bottom: 3rem;
+        }
+
+        h2 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            color: var(--gray-100);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary);
+            display: inline-block;
+        }
+
+        h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--gray-70);
+            margin-bottom: 0.75rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--gray-70);
+        }
+
+        /* Before / After Comparison */
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .comparison-card {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border-top: 4px solid var(--gray-30);
+        }
+
+        .comparison-card.before {
+            border-top-color: var(--danger);
+        }
+
+        .comparison-card.after {
+            border-top-color: var(--success);
+        }
+
+        .comparison-card .card-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.75rem;
+        }
+
+        .comparison-card.before .card-label {
+            color: var(--danger);
+        }
+
+        .comparison-card.after .card-label {
+            color: var(--success);
+        }
+
+        .comparison-card h3 {
+            color: var(--gray-100);
+            margin-bottom: 1rem;
+        }
+
+        .comparison-card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .comparison-card ul li {
+            padding: 0.5rem 0;
+            padding-left: 1.75rem;
+            position: relative;
+            color: var(--gray-70);
+            font-size: 0.95rem;
+        }
+
+        .comparison-card.before ul li::before {
+            content: "\2717";
+            position: absolute;
+            left: 0;
+            color: var(--danger);
+            font-weight: bold;
+        }
+
+        .comparison-card.after ul li::before {
+            content: "\2713";
+            position: absolute;
+            left: 0;
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        /* Flow Diagram */
+        .flow-container {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            margin-top: 1rem;
+        }
+
+        .flow {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            width: 100%;
+            max-width: 750px;
+        }
+
+        .flow-number {
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: var(--white);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .flow-content {
+            flex: 1;
+            background: var(--gray-10);
+            border-radius: 8px;
+            padding: 1.1rem 1.5rem;
+            border-left: 3px solid var(--primary);
+        }
+
+        .flow-content .step-title {
+            font-weight: 600;
+            color: var(--gray-100);
+            font-size: 0.95rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .flow-content .step-detail {
+            font-size: 0.88rem;
+            color: var(--gray-50);
+            margin: 0;
+        }
+
+        .flow-content code {
+            background: var(--gray-20);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            color: var(--gray-90);
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+        }
+
+        .flow-arrow {
+            width: 44px;
+            min-width: 44px;
+            display: flex;
+            justify-content: center;
+            padding: 0.25rem 0;
+        }
+
+        .flow-arrow svg {
+            width: 20px;
+            height: 28px;
+            color: var(--gray-30);
+        }
+
+        /* Scenario Table */
+        .scenario-card {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            margin-top: 1rem;
+        }
+
+        .scenario-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 0;
+            font-size: 0.92rem;
+        }
+
+        .scenario-grid .sg-header {
+            background: var(--gray-100);
+            color: var(--white);
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .scenario-grid .sg-header:first-child {
+            border-radius: 8px 0 0 0;
+        }
+
+        .scenario-grid .sg-header:nth-child(2) {
+            border-radius: 0 8px 0 0;
+        }
+
+        .scenario-grid .sg-label {
+            background: var(--gray-10);
+            padding: 0.85rem 1rem;
+            font-weight: 600;
+            color: var(--gray-90);
+            border-bottom: 1px solid var(--gray-20);
+        }
+
+        .scenario-grid .sg-value {
+            padding: 0.85rem 1rem;
+            color: var(--gray-70);
+            border-bottom: 1px solid var(--gray-20);
+        }
+
+        /* API Reference */
+        .api-card {
+            background: var(--white);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom: 1.25rem;
+        }
+
+        .api-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            background: var(--gray-10);
+            border-bottom: 1px solid var(--gray-20);
+        }
+
+        .api-method {
+            background: var(--success);
+            color: var(--white);
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+        }
+
+        .api-path {
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.9rem;
+            color: var(--gray-90);
+        }
+
+        .api-body {
+            padding: 1.25rem 1.5rem;
+        }
+
+        .api-body p {
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .api-response {
+            background: var(--gray-100);
+            color: #a8d8a8;
+            padding: 1rem 1.25rem;
+            border-radius: 6px;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.8rem;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+
+        .api-response .json-key {
+            color: #88c0d0;
+        }
+
+        .api-response .json-string {
+            color: #a3be8c;
+        }
+
+        .api-response .json-comment {
+            color: var(--gray-50);
+            font-style: italic;
+        }
+
+        /* Architecture */
+        .arch-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
+            margin-top: 1rem;
+        }
+
+        .arch-card {
+            background: var(--white);
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border-left: 3px solid var(--primary);
+        }
+
+        .arch-card .file-name {
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.82rem;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .arch-card .file-desc {
+            font-size: 0.88rem;
+            color: var(--gray-70);
+            margin: 0;
+        }
+
+        .arch-card.new-file {
+            border-left-color: var(--success);
+        }
+
+        .arch-card.new-file .file-name::after {
+            content: "NEW";
+            background: var(--success);
+            color: white;
+            font-size: 0.6rem;
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 700;
+        }
+
+        .arch-card.modified {
+            border-left-color: var(--warning);
+        }
+
+        .arch-card.modified .file-name::after {
+            content: "MODIFIED";
+            background: var(--warning);
+            color: var(--gray-100);
+            font-size: 0.6rem;
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 700;
+        }
+
+        /* Callout */
+        .callout {
+            background: #edf5ff;
+            border-left: 4px solid var(--primary);
+            padding: 1.25rem 1.5rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1.5rem 0;
+        }
+
+        .callout p {
+            color: var(--gray-90);
+            margin: 0;
+            font-size: 0.92rem;
+        }
+
+        .callout strong {
+            color: var(--primary-dark);
+        }
+
+        /* Example output */
+        .output-block {
+            background: var(--gray-100);
+            border-radius: 8px;
+            padding: 1.25rem 1.5rem;
+            margin-top: 1rem;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.82rem;
+            line-height: 1.8;
+            color: var(--gray-30);
+            overflow-x: auto;
+        }
+
+        .output-block .highlight {
+            color: #a3be8c;
+        }
+
+        .output-block .dimmed {
+            color: var(--gray-50);
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--gray-50);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--gray-20);
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="badge">NEW FEATURE</div>
+        <h1>IBM DataPower Orchestrator &mdash; <strong>Discovery</strong></h1>
+        <p class="subtitle">Automatically discover all domains and certificate stores across your DataPower appliance. No more manually creating hundreds of cert store definitions.</p>
+    </div>
+
+    <div class="container">
+
+        <!-- BEFORE vs AFTER -->
+        <section>
+            <h2>Before vs. After Discovery</h2>
+
+            <div class="comparison">
+                <div class="comparison-card before">
+                    <div class="card-label">Before &mdash; Manual Setup</div>
+                    <h3>Without Discovery</h3>
+                    <ul>
+                        <li>Admin must know every domain name on the appliance</li>
+                        <li>Each domain + store combination created by hand in Keyfactor Command</li>
+                        <li>50 domains &times; 2 stores = 100 cert store definitions manually configured</li>
+                        <li>New domains added to DataPower require manual store creation</li>
+                        <li>Environments (prod, test, dev, sandbox) multiply the effort</li>
+                        <li>Human error risk &mdash; missed domains mean unmanaged certificates</li>
+                    </ul>
+                </div>
+                <div class="comparison-card after">
+                    <div class="card-label">After &mdash; Automated Discovery</div>
+                    <h3>With Discovery</h3>
+                    <ul>
+                        <li>Point Discovery at the appliance &mdash; it finds all domains automatically</li>
+                        <li>All certificate store directories (cert, pubcert, sharedcert) detected per domain</li>
+                        <li>Store paths returned in ready-to-use format: <code>domain\store</code></li>
+                        <li>New domains picked up on next scheduled Discovery run</li>
+                        <li>Run once per environment to discover everything</li>
+                        <li>Complete coverage &mdash; no domains or stores overlooked</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- CUSTOMER SCENARIO -->
+        <section>
+            <h2>Customer Scenario</h2>
+            <div class="scenario-card">
+                <p>A typical enterprise DataPower deployment with multiple environments, each containing dozens of domains:</p>
+                <div class="scenario-grid">
+                    <div class="sg-header">Environment</div>
+                    <div class="sg-header">Impact</div>
+                    <div class="sg-label">Production</div>
+                    <div class="sg-value">50 domains &times; 2 cert stores = <strong>100 store definitions</strong> auto-discovered in one job</div>
+                    <div class="sg-label">Test</div>
+                    <div class="sg-value">40 domains &times; 2 cert stores = <strong>80 store definitions</strong> auto-discovered in one job</div>
+                    <div class="sg-label">Dev</div>
+                    <div class="sg-value">30 domains &times; 2 cert stores = <strong>60 store definitions</strong> auto-discovered in one job</div>
+                    <div class="sg-label">Sandbox</div>
+                    <div class="sg-value">20 domains &times; 2 cert stores = <strong>40 store definitions</strong> auto-discovered in one job</div>
+                    <div class="sg-label" style="border-radius: 0 0 0 8px; font-weight: 700; color: var(--primary-dark);">Total</div>
+                    <div class="sg-value" style="border-radius: 0 0 8px 0; font-weight: 700; color: var(--primary-dark);">280 cert store definitions &mdash; discovered automatically with 4 Discovery jobs</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DISCOVERY FLOW -->
+        <section>
+            <h2>How Discovery Works</h2>
+            <div class="flow-container">
+                <div class="flow">
+
+                    <div class="flow-step">
+                        <div class="flow-number">1</div>
+                        <div class="flow-content">
+                            <div class="step-title">Keyfactor Triggers Discovery Job</div>
+                            <p class="step-detail">Keyfactor Command schedules a Discovery job targeting the DataPower appliance. Only the appliance hostname/IP and credentials are needed &mdash; no domain or store path required.</p>
+                        </div>
+                    </div>
+
+                    <div class="flow-step">
+                        <div class="flow-arrow">
+                            <svg viewBox="0 0 20 28" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2 L10 22 M4 16 L10 22 L16 16"/></svg>
+                        </div>
+                        <div style="flex:1"></div>
+                    </div>
+
+                    <div class="flow-step">
+                        <div class="flow-number">2</div>
+                        <div class="flow-content">
+                            <div class="step-title">Enumerate All Domains</div>
+                            <p class="step-detail">The orchestrator calls <code>GET /mgmt/domains/config/</code> on the DataPower REST Management Interface. This returns every application domain configured on the appliance.</p>
+                        </div>
+                    </div>
+
+                    <div class="flow-step">
+                        <div class="flow-arrow">
+                            <svg viewBox="0 0 20 28" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2 L10 22 M4 16 L10 22 L16 16"/></svg>
+                        </div>
+                        <div style="flex:1"></div>
+                    </div>
+
+                    <div class="flow-step">
+                        <div class="flow-number">3</div>
+                        <div class="flow-content">
+                            <div class="step-title">Discover Certificate Stores Per Domain</div>
+                            <p class="step-detail">For each domain found, the orchestrator calls <code>GET /mgmt/filestore/{domain}</code> to list the top-level filestore directories. It filters for certificate-relevant directories: <code>cert</code>, <code>pubcert</code>, and <code>sharedcert</code>.</p>
+                        </div>
+                    </div>
+
+                    <div class="flow-step">
+                        <div class="flow-arrow">
+                            <svg viewBox="0 0 20 28" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2 L10 22 M4 16 L10 22 L16 16"/></svg>
+                        </div>
+                        <div style="flex:1"></div>
+                    </div>
+
+                    <div class="flow-step">
+                        <div class="flow-number">4</div>
+                        <div class="flow-content">
+                            <div class="step-title">Build Store Paths</div>
+                            <p class="step-detail">Each domain + directory combination is formatted as a store path using the existing convention: <code>domain\directory</code> (e.g., <code>production-api\cert</code>).</p>
+                        </div>
+                    </div>
+
+                    <div class="flow-step">
+                        <div class="flow-arrow">
+                            <svg viewBox="0 0 20 28" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2 L10 22 M4 16 L10 22 L16 16"/></svg>
+                        </div>
+                        <div style="flex:1"></div>
+                    </div>
+
+                    <div class="flow-step">
+                        <div class="flow-number">5</div>
+                        <div class="flow-content">
+                            <div class="step-title">Submit to Keyfactor Command</div>
+                            <p class="step-detail">All discovered store paths are submitted back to Keyfactor via the <code>SubmitDiscoveryUpdate</code> callback. Keyfactor Command can then auto-create the corresponding certificate store definitions.</p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="callout">
+                <p><strong>Resilient by design:</strong> If the orchestrator cannot access a specific domain's filestore (e.g., due to permissions), it logs a warning and continues discovering the remaining domains. One inaccessible domain does not block the entire job.</p>
+            </div>
+        </section>
+
+        <!-- STORE PATH FORMAT -->
+        <section>
+            <h2>Store Path Format</h2>
+            <p>All operations in the DataPower Orchestrator (Discovery, Inventory, Add, Remove) use a consistent store path format to identify which domain and certificate directory to target. For full documentation, see <a href="../docsource/content.md#store-path-format" style="color: var(--primary); text-decoration: none; font-weight: 600;">content.md &mdash; Store Path Format</a>.</p>
+
+            <div class="flow-container" style="padding: 1.5rem 2rem;">
+                <div style="font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 1.2rem; text-align: center; margin-bottom: 1.25rem; color: var(--gray-100);">
+                    <span style="color: var(--primary);">&lt;domain&gt;</span><span style="color: var(--gray-50);">\</span><span style="color: var(--success);">&lt;directory&gt;</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; font-size: 0.88rem;">
+                    <div style="text-align: center;">
+                        <div style="font-weight: 600; color: var(--gray-100); margin-bottom: 0.25rem;">Directory</div>
+                        <div style="color: var(--gray-50);">Scope</div>
+                    </div>
+                    <div></div>
+                    <div></div>
+
+                    <div style="background: var(--gray-10); padding: 0.6rem 0.75rem; border-radius: 6px; border-left: 3px solid var(--success);">
+                        <code style="font-weight: 600;">cert</code>
+                        <div style="color: var(--gray-50); font-size: 0.8rem;">Per-domain &mdash; private keys &amp; certs</div>
+                    </div>
+                    <div style="background: var(--gray-10); padding: 0.6rem 0.75rem; border-radius: 6px; border-left: 3px solid var(--primary);">
+                        <code style="font-weight: 600;">pubcert</code>
+                        <div style="color: var(--gray-50); font-size: 0.8rem;">Appliance-wide &mdash; public/trusted certs</div>
+                    </div>
+                    <div style="background: var(--gray-10); padding: 0.6rem 0.75rem; border-radius: 6px; border-left: 3px solid var(--warning);">
+                        <code style="font-weight: 600;">sharedcert</code>
+                        <div style="color: var(--gray-50); font-size: 0.8rem;">Appliance-wide &mdash; persists across upgrades</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center;">
+                    <code style="background: var(--gray-20); padding: 0.35rem 0.7rem; border-radius: 4px; font-size: 0.82rem;">default\pubcert</code>
+                    <code style="background: var(--gray-20); padding: 0.35rem 0.7rem; border-radius: 4px; font-size: 0.82rem;">production-api\cert</code>
+                    <code style="background: var(--gray-20); padding: 0.35rem 0.7rem; border-radius: 4px; font-size: 0.82rem;">staging\pubcert</code>
+                    <code style="background: var(--gray-20); padding: 0.35rem 0.7rem; border-radius: 4px; font-size: 0.82rem;">testdomain\sharedcert</code>
+                </div>
+            </div>
+        </section>
+
+        <!-- EXAMPLE OUTPUT -->
+        <section>
+            <h2>Example Discovery Output</h2>
+            <p>For a DataPower appliance with 4 domains, Discovery returns store paths like:</p>
+            <div class="output-block">
+<span class="dimmed">// Discovered 8 certificate store locations:</span>
+<span class="highlight">default\cert</span>
+<span class="highlight">default\pubcert</span>
+<span class="highlight">production-api\cert</span>
+<span class="highlight">production-api\pubcert</span>
+<span class="highlight">staging-api\cert</span>
+<span class="highlight">staging-api\pubcert</span>
+<span class="highlight">internal-services\cert</span>
+<span class="highlight">internal-services\pubcert</span>
+            </div>
+            <p style="margin-top: 1rem;">Each of these becomes a certificate store in Keyfactor Command, ready for Inventory and Management operations.</p>
+        </section>
+
+        <!-- API CALLS -->
+        <section>
+            <h2>DataPower API Calls Used</h2>
+
+            <div class="api-card">
+                <div class="api-header">
+                    <span class="api-method">GET</span>
+                    <span class="api-path">/mgmt/domains/config/</span>
+                </div>
+                <div class="api-body">
+                    <p>Returns all application domains configured on the DataPower appliance.</p>
+                    <div class="api-response">
+{
+  <span class="json-key">"domain"</span>: [
+    { <span class="json-key">"name"</span>: <span class="json-string">"default"</span> },
+    { <span class="json-key">"name"</span>: <span class="json-string">"production-api"</span> },
+    { <span class="json-key">"name"</span>: <span class="json-string">"staging-api"</span> },
+    { <span class="json-key">"name"</span>: <span class="json-string">"internal-services"</span> }
+  ]
+}
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <div class="api-header">
+                    <span class="api-method">GET</span>
+                    <span class="api-path">/mgmt/filestore/{domain}</span>
+                </div>
+                <div class="api-body">
+                    <p>Returns the top-level filestore directories for a specific domain. The orchestrator filters for <code>cert</code>, <code>pubcert</code>, and <code>sharedcert</code>.</p>
+                    <div class="api-response">
+{
+  <span class="json-key">"filestore"</span>: {
+    <span class="json-key">"directory"</span>: [
+      { <span class="json-key">"name"</span>: <span class="json-string">"cert"</span> },
+      { <span class="json-key">"name"</span>: <span class="json-string">"chkpoints"</span> },    <span class="json-comment">// ignored</span>
+      { <span class="json-key">"name"</span>: <span class="json-string">"config"</span> },       <span class="json-comment">// ignored</span>
+      { <span class="json-key">"name"</span>: <span class="json-string">"local"</span> },        <span class="json-comment">// ignored</span>
+      { <span class="json-key">"name"</span>: <span class="json-string">"pubcert"</span> },
+      { <span class="json-key">"name"</span>: <span class="json-string">"sharedcert"</span> }
+    ]
+  }
+}
+                    </div>
+                </div>
+            </div>
+
+            <div class="callout">
+                <p><strong>DataPower JSON quirk:</strong> When only a single item exists (e.g., one domain or one directory), DataPower returns a plain object instead of a single-element array. The orchestrator handles this automatically, consistent with how the existing Inventory job handles the same behavior.</p>
+            </div>
+        </section>
+
+        <!-- FILE ARCHITECTURE -->
+        <section>
+            <h2>Implementation Architecture</h2>
+
+            <h3>New Files</h3>
+            <div class="arch-grid">
+                <div class="arch-card new-file">
+                    <div class="file-name">Jobs/Discovery.cs</div>
+                    <p class="file-desc">Main Discovery job class. Implements <code>IDiscoveryJobExtension</code>. Orchestrates domain enumeration and store path collection.</p>
+                </div>
+                <div class="arch-card new-file">
+                    <div class="file-name">Models/Requests/ListDomainsRequest.cs</div>
+                    <p class="file-desc">HTTP request model for <code>GET /mgmt/domains/config/</code></p>
+                </div>
+                <div class="arch-card new-file">
+                    <div class="file-name">Models/Requests/ListFileStoreRequest.cs</div>
+                    <p class="file-desc">HTTP request model for <code>GET /mgmt/filestore/{domain}</code></p>
+                </div>
+                <div class="arch-card new-file">
+                    <div class="file-name">Models/Responses/ListDomainsResponse.cs</div>
+                    <p class="file-desc">Response deserialization for domain listing. Includes single-item variant for DataPower JSON quirk.</p>
+                </div>
+                <div class="arch-card new-file">
+                    <div class="file-name">Models/Responses/ListFileStoreResponse.cs</div>
+                    <p class="file-desc">Response deserialization for filestore directory listing.</p>
+                </div>
+                <div class="arch-card new-file">
+                    <div class="file-name">Models/SupportingObjects/DomainInfo.cs</div>
+                    <p class="file-desc">Domain name and href properties from the DataPower domains API.</p>
+                </div>
+                <div class="arch-card new-file">
+                    <div class="file-name">Models/SupportingObjects/FileStoreLocation.cs</div>
+                    <p class="file-desc">Name and href of one entry in <code>filestore.location[]</code> (e.g. <code>cert:</code>, <code>pubcert:</code>, <code>sharedcert:</code>).</p>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">Modified Files</h3>
+            <div class="arch-grid">
+                <div class="arch-card modified">
+                    <div class="file-name">Client/DataPowerClient.cs</div>
+                    <p class="file-desc">Added <code>ListDomains()</code> and <code>ListFileStoreDirectories()</code> methods with single-item JSON quirk handling.</p>
+                </div>
+                <div class="arch-card modified">
+                    <div class="file-name">manifest.json</div>
+                    <p class="file-desc">Registered <code>CertStores.DataPower.Discovery</code> job extension type.</p>
+                </div>
+                <div class="arch-card modified">
+                    <div class="file-name">integration-manifest.json</div>
+                    <p class="file-desc">Set <code>supportsDiscovery: true</code> and <code>Discovery: true</code> in supported operations.</p>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <footer>
+        IBM DataPower Orchestrator &mdash; Keyfactor Integration &mdash; Discovery Feature Documentation
+    </footer>
+
+</body>
+</html>

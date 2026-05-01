@@ -8,6 +8,10 @@
       "CertStores.DataPower.Management": {
         "assemblypath": "DataPower.dll",
         "TypeFullName": "Keyfactor.Extensions.Orchestrator.DataPower.Jobs.Management"
+      },
+      "CertStores.DataPower.Discovery": {
+        "assemblypath": "DataPower.dll",
+        "TypeFullName": "Keyfactor.Extensions.Orchestrator.DataPower.Jobs.Discovery"
       }
     }
   }
