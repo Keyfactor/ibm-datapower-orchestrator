@@ -56,3 +56,8 @@ If this returns a JSON list of domains, the orchestrator will work from this hos
 | `The specified certificate has an unreadable, corrupt, or invalid certificate file` on Inventory's per-cert detail fetch | DataPower's parser rejected the cert file. Common cause is a self-signed cert lacking standard X.509 extensions (BasicConstraints, KeyUsage). The `test/generate-test-certs.ps1` script in the repo generates lab certs with the right extensions for testing. |
 | `401 Unauthorized` | API credentials are wrong, or the REST mgmt user lacks access to the target domain. |
 | `404 Not Found` on `/mgmt/domains/config/` | REST mgmt interface is not enabled on the appliance, or the orchestrator is pointing at the wrong port. |
+
+## Overview
+
+TODO Overview is a required section
+
