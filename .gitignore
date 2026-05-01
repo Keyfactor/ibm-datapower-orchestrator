@@ -348,3 +348,11 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+
+# Claude Code per-machine IDE state
+.claude/
+
+# Secrets - never commit credentials, PATs, or environment files
+.secrets/
+*.env
+

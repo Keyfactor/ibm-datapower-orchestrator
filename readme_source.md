@@ -1,8 +1,57 @@
-**IBM Datapower**
+**IBM DataPower**
 
 **Overview**
 
-The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported.  This integration can add/replace certificates in any domain\directory combination.  For example default\pubcert
+The IBM DataPower Orchestrator allows for the management of certificates in the IBM DataPower platform. Discovery, Inventory, Add and Remove functions are supported. This integration can manage certificates in any domain and certificate store directory on a DataPower appliance.
+
+For details on how store paths work, see the [Store Path Format](#store-path-format) section below.
+
+---
+
+**Store Path Format**
+
+The Store Path identifies which domain and certificate store directory to target on the DataPower appliance. The format is:
+
+```
+<domain>\<directory>
+```
+
+| Part | Description | Examples |
+|------|-------------|----------|
+| **Domain** | The DataPower application domain | `default`, `production-api`, `staging` |
+| **Directory** | The certificate store directory | `cert`, `pubcert`, `sharedcert` |
+
+**Certificate Store Directories:**
+
+| Directory | Scope | Contents |
+|-----------|-------|----------|
+| `cert` | Per-domain | Domain-specific certificates and private keys |
+| `pubcert` | Appliance-wide | Public/trusted certificates shared across all domains |
+| `sharedcert` | Appliance-wide | Shared certificates that persist across firmware upgrades |
+
+**Examples:** `default\pubcert`, `production-api\cert`, `testdomain\pubcert`
+
+> **Tip:** Use the Discovery job to automatically find all valid store paths on an appliance.
+
+---
+
+**Discovery**
+
+The Discovery job automatically enumerates all domains and certificate store directories on a DataPower appliance. This eliminates the need to manually create certificate store definitions, especially useful for environments with many domains.
+
+**How it works:**
+1. Calls `GET /mgmt/domains/config/` to list all application domains
+2. For each domain, calls `GET /mgmt/filestore/{domain}` to find certificate directories
+3. Filters for `cert`, `pubcert`, and `sharedcert` directories
+4. Returns store paths (e.g., `production-api\cert`) to Keyfactor Command
+
+**Discovery Configuration:**
+
+CONFIG ELEMENT|DESCRIPTION
+--------------|-----------
+Client Machine|The DataPower appliance hostname/IP and REST API port (e.g., `datapower.example.com:5554`)
+Server Username|API username for DataPower (PAM eligible)
+Server Password|API password for DataPower (PAM eligible)
 
 ---
 
@@ -14,7 +63,7 @@ SETTING TAB  |  CONFIG ELEMENT	| DESCRIPTION
 Basic |Name	|Descriptive name for the Store Type.  IBM Data Power Universal can be used.
 Basic |Short Name	|The short name that identifies the registered functionality of the orchestrator. Must be DataPower.
 Basic |Custom Capability|Unchecked
-Basic |Job Types	|Inventory, Add, and Remove are the supported job types. 
+Basic |Job Types	|Discovery, Inventory, Add, and Remove are the supported job types. 
 Basic |Needs Server	|Must be checked
 Basic |Blueprint Allowed	|checked
 Basic |Requires Store Password	|Determines if a store password is required when configuring an individual store.  This must be unchecked.
@@ -45,7 +94,7 @@ CONFIG ELEMENT	|DESCRIPTION
 Category	|The type of certificate store to be configured. Select category based on the display name configured above "IBM Data Power Universal".
 Container	|This is a logical grouping of like stores. This configuration is optional and does not impact the functionality of the store.
 Client Machine	| The server and port the DataPower API runs on.  This is typically port 5554 for the API.
-Store Path	|This will the domain\path combination to enroll and inventory to.  If it is the default domain just put the path.
+Store Path	|The `domain\directory` store path targeting a specific domain and certificate store. See [Store Path Format](#store-path-format) above. Examples: `default\pubcert`, `production-api\cert`. The Discovery job can find these automatically.
 Inventory Page Size|This determines the page size during the inventory calls. (100 should be fine).
 Public Cert Store Name| This probably will remain pubcert unless someone changed the default name in DataPower.
 Protocol| This should always be https in production, may need to change in test to http.
