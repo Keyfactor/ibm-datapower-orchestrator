@@ -18,7 +18,7 @@
 ### With Discovery (Automated)
 
 - Point Discovery at the appliance - it finds all domains automatically
-- All certificate store directories (`cert`, `pubcert`, `sharedcert`) detected per domain
+- Standard certificate store directories (`cert`, `pubcert`, `sharedcert`) detected per domain by default; configurable via the job's "Directories to search" field
 - Store paths returned in ready-to-use format: `domain\store`
 - New domains picked up on next scheduled Discovery run
 - Run once per environment to discover everything
@@ -52,7 +52,17 @@ The orchestrator calls `GET /mgmt/domains/config/` on the DataPower REST Managem
 
 ### Step 3: Discover Certificate Stores Per Domain
 
-For each domain found, the orchestrator calls `GET /mgmt/filestore/{domain}` to list the top-level filestore directories. It filters for certificate-relevant directories: `cert`, `pubcert`, and `sharedcert`.
+For each domain found, the orchestrator calls `GET /mgmt/filestore/{domain}` to list the top-level filestore directories. It then filters those directories against the **Directories to search** value supplied with the Discovery job — a comma-separated list (e.g. `cert,pubcert,sharedcert`). When the field is left empty the orchestrator falls back to the standard set: `cert`, `pubcert`, `sharedcert`. The trailing colon DataPower returns on each location name (e.g. `cert:`) is stripped before matching, so the user-supplied values are written without the colon. The FlowLogger summary records which list was used:
+
+```
+[OK] ResolveDirsToSearch - source=user (key=dirs), dirs=[cert,sharedcert]
+```
+
+or
+
+```
+[OK] ResolveDirsToSearch - source=default, dirs=[cert,pubcert,sharedcert]
+```
 
 ### Step 4: Build Store Paths
 
@@ -131,7 +141,7 @@ Returns all application domains configured on the DataPower appliance.
 
 ### `GET /mgmt/filestore/{domain}`
 
-Returns the top-level filestore directories for a specific domain. The orchestrator filters for `cert`, `pubcert`, and `sharedcert`.
+Returns the top-level filestore directories for a specific domain. The orchestrator filters those names against the Discovery job's "Directories to search" field (comma-separated; defaults to `cert,pubcert,sharedcert`).
 
 ```json
 {

@@ -26,13 +26,43 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
 {
     public class Discovery : JobBase, IDiscoveryJobExtension
     {
-        // Certificate-relevant filestore directories on DataPower
-        private static readonly HashSet<string> CertStoreDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        // Default cert-relevant filestore directories on DataPower. Used when the
+        // operator leaves the Discovery job's "Directories to search" field empty.
+        private static readonly HashSet<string> DefaultCertStoreDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "cert",
             "pubcert",
             "sharedcert"
         };
+
+        // Keyfactor Command's Discovery form posts the comma-separated "Directories
+        // to search" value into JobProperties. Try the common key names since the
+        // exact casing has shifted across Command versions.
+        private static readonly string[] DirsToSearchKeys = { "dirs", "Dirs", "directories", "Directories", "DirsToSearch" };
+
+        private static (HashSet<string> Dirs, string Source) ResolveDirsToSearch(DiscoveryJobConfiguration config)
+        {
+            if (config?.JobProperties != null)
+            {
+                foreach (var key in DirsToSearchKeys)
+                {
+                    if (!config.JobProperties.TryGetValue(key, out var raw)) continue;
+                    var s = raw?.ToString();
+                    if (string.IsNullOrWhiteSpace(s)) continue;
+
+                    var dirs = new HashSet<string>(
+                        s.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                            .Select(d => d.Trim().TrimEnd(':'))
+                            .Where(d => d.Length > 0),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    if (dirs.Count > 0)
+                        return (dirs, $"user (key={key})");
+                }
+            }
+
+            return (DefaultCertStoreDirectories, "default");
+        }
 
         public Discovery(IPAMSecretResolver resolver) : base(resolver)
         {
@@ -107,6 +137,11 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                         "default");
                 }, $"host={config.ClientMachine}");
 
+                var resolvedDirs = ResolveDirsToSearch(config);
+                var certStoreDirectories = resolvedDirs.Dirs;
+                flow.Step("ResolveDirsToSearch",
+                    $"source={resolvedDirs.Source}, dirs=[{string.Join(",", certStoreDirectories)}]");
+
                 List<Models.SupportingObjects.DomainInfo> domains = null;
                 flow.Step("ListDomains", () =>
                 {
@@ -148,7 +183,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                                 // matching and before composing the store path.
                                 var certDirectories = directories
                                     .Select(d => d?.TrimEnd(':'))
-                                    .Where(d => !string.IsNullOrEmpty(d) && CertStoreDirectories.Contains(d))
+                                    .Where(d => !string.IsNullOrEmpty(d) && certStoreDirectories.Contains(d))
                                     .ToList();
 
                                 foreach (var dir in certDirectories)

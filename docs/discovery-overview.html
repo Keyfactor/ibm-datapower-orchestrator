@@ -524,7 +524,7 @@
                     <h3>With Discovery</h3>
                     <ul>
                         <li>Point Discovery at the appliance &mdash; it finds all domains automatically</li>
-                        <li>All certificate store directories (cert, pubcert, sharedcert) detected per domain</li>
+                        <li>Standard certificate store directories (<code>cert</code>, <code>pubcert</code>, <code>sharedcert</code>) detected per domain by default; configurable via the job's "Directories to search" field</li>
                         <li>Store paths returned in ready-to-use format: <code>domain\store</code></li>
                         <li>New domains picked up on next scheduled Discovery run</li>
                         <li>Run once per environment to discover everything</li>
@@ -596,7 +596,7 @@
                         <div class="flow-number">3</div>
                         <div class="flow-content">
                             <div class="step-title">Discover Certificate Stores Per Domain</div>
-                            <p class="step-detail">For each domain found, the orchestrator calls <code>GET /mgmt/filestore/{domain}</code> to list the top-level filestore directories. It filters for certificate-relevant directories: <code>cert</code>, <code>pubcert</code>, and <code>sharedcert</code>.</p>
+                            <p class="step-detail">For each domain found, the orchestrator calls <code>GET /mgmt/filestore/{domain}</code> to list the top-level filestore directories. It filters those names against the Discovery job's <strong>Directories to search</strong> field (comma-separated, e.g. <code>cert,pubcert,sharedcert</code>). When the field is empty, the orchestrator falls back to the standard set: <code>cert</code>, <code>pubcert</code>, <code>sharedcert</code>. The trailing colon DataPower returns on each location name is stripped before matching. The FlowLogger summary records which list was used (<code>source=user</code> vs <code>source=default</code>).</p>
                         </div>
                     </div>
 
@@ -727,7 +727,7 @@
                     <span class="api-path">/mgmt/filestore/{domain}</span>
                 </div>
                 <div class="api-body">
-                    <p>Returns the top-level filestore directories for a specific domain. The orchestrator filters for <code>cert</code>, <code>pubcert</code>, and <code>sharedcert</code>.</p>
+                    <p>Returns the top-level filestore directories for a specific domain. The orchestrator filters those names against the Discovery job's "Directories to search" field (comma-separated; defaults to <code>cert,pubcert,sharedcert</code>).</p>
                     <div class="api-response">
 {
   <span class="json-key">"filestore"</span>: {
