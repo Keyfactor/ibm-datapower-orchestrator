@@ -1152,8 +1152,21 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 
                 _logger.LogTrace("Start loop");
 
-                var cryptoCerts = viewCertificateCollection?.CryptoCertificates ?? Array.Empty<CryptoCertificate>();
-                flow?.Step("GetCerts.ParseResponse", $"certCount={cryptoCerts.Length}, blacklistCount={blackList.Count}");
+                var allCryptoCerts = viewCertificateCollection?.CryptoCertificates ?? Array.Empty<CryptoCertificate>();
+
+                // /mgmt/config/{domain}/CryptoCertificate returns every CryptoCertificate
+                // object in the domain regardless of which filestore directory its file
+                // lives in. Filter to those whose Filename URI scheme matches the store
+                // path we're inventorying so a "default\sharedcert" job doesn't show
+                // pubcert: entries (and vice versa).
+                var storeScheme = (ci.CertificateStore ?? string.Empty).Trim() + ":";
+                var cryptoCerts = allCryptoCerts
+                    .Where(cc => cc?.CertFile != null &&
+                                 cc.CertFile.StartsWith(storeScheme, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                flow?.Step("GetCerts.ParseResponse",
+                    $"certCount={cryptoCerts.Length} (filtered from {allCryptoCerts.Length} by scheme '{storeScheme}'), blacklistCount={blackList.Count}");
                 foreach (var cc in cryptoCerts)
                     if (cc != null && !string.IsNullOrEmpty(cc.Name))
                     {
