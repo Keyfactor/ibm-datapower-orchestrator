@@ -37,7 +37,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 {
     public class RequestManager
     {
-        private readonly ILogger<RequestManager> _logger;
+        private readonly ILogger _logger;
         private string _protocol;
         private IPAMSecretResolver _resolver;
         private string ServerUserName { get; set; }
@@ -46,9 +46,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 
         public RequestManager(IPAMSecretResolver resolver)
         {
-            var loggerFactory = (ILoggerFactory) new LoggerFactory();
-            var reqLogger = loggerFactory.CreateLogger<RequestManager>();
-            _logger = reqLogger;
+            // Must use LogHandler so we plug into the orchestrator's NLog pipeline.
+            // A bare-new LoggerFactory has no providers, so LogTrace/LogError calls
+            // get silently dropped.
+            _logger = LogHandler.GetClassLogger<RequestManager>();
             _resolver = resolver;
         }
 
