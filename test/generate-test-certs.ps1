@@ -41,6 +41,28 @@ function New-CertKeyPair {
             [System.Security.Cryptography.HashAlgorithmName]::SHA256,
             [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
         )
+
+        # DataPower's CryptoCertificate loader rejects barebones certs ("unreadable,
+        # corrupt, or invalid certificate file") - it expects a real end-entity TLS cert
+        # with the usual extensions. Add BasicConstraints, KeyUsage, EKU, and SKI.
+        $req.CertificateExtensions.Add(
+            [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new(
+                $false, $false, 0, $true))
+        $req.CertificateExtensions.Add(
+            [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
+                ([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor
+                 [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment),
+                $true))
+        $ekuOids = [System.Security.Cryptography.OidCollection]::new()
+        [void]$ekuOids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.1'))  # serverAuth
+        [void]$ekuOids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.2'))  # clientAuth
+        $req.CertificateExtensions.Add(
+            [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new(
+                $ekuOids, $false))
+        $req.CertificateExtensions.Add(
+            [System.Security.Cryptography.X509Certificates.X509SubjectKeyIdentifierExtension]::new(
+                $req.PublicKey, $false))
+
         $notBefore = [DateTimeOffset]::UtcNow.AddMinutes(-5)
         $notAfter  = [DateTimeOffset]::UtcNow.AddDays($Days)
         $cert = $req.CreateSelfSigned($notBefore, $notAfter)
