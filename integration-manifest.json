@@ -8,7 +8,7 @@
   "support_level": "kf-supported",
   "release_project": "DataPower/DataPower.csproj",
   "release_dir": "DataPower/bin/Release",
-  "description": "The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported. This integration can add/replace certificates in any domain\\directory combination. ",
+  "description": "The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Discovery, Inventory, Add and Remove functions are supported. Discovery automatically finds all domains and certificate store directories on a DataPower appliance. This integration can add/replace certificates in any domain\\directory combination. ",
   "link_github": true,
   "update_catalog": true,
   "about": {
@@ -19,7 +19,7 @@
       "keyfactor_platform_version": "10.4",
       "win": {
         "supportsCreateStore": false,
-        "supportsDiscovery": false,
+        "supportsDiscovery": true,
         "supportsManagementAdd": true,
         "supportsManagementRemove": true,
         "supportsReenrollment": false,
@@ -28,7 +28,7 @@
       },
       "linux": {
         "supportsCreateStore": false,
-        "supportsDiscovery": false,
+        "supportsDiscovery": true,
         "supportsManagementAdd": true,
         "supportsManagementRemove": true,
         "supportsReenrollment": false,
@@ -44,7 +44,7 @@
           "SupportedOperations": {
             "Add": true,
             "Create": false,
-            "Discovery": false,
+            "Discovery": true,
             "Enrollment": false,
             "Remove": false
           },
@@ -121,7 +121,7 @@
           ],
           "EntryParameters": [],
           "ClientMachineDescription": "The Client Machine field should contain the IP or Domain name and Port Needed for REST API Access.  For SSH Access, Port 22 will be used.",
-          "StorePathDescription": "The Store Path field should always be / unless we later determine there are alternate locations needed.",
+          "StorePathDescription": "The store path uses the format domain\\directory (e.g., default\\pubcert, production-api\\cert). The Discovery job can automatically find all valid store paths on an appliance.",
           "PasswordOptions": {
             "EntrySupported": false,
             "StoreRequired": false,
