@@ -37,7 +37,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 {
     public class RequestManager
     {
-        private readonly ILogger<RequestManager> _logger;
+        private readonly ILogger _logger;
         private string _protocol;
         private IPAMSecretResolver _resolver;
         private string ServerUserName { get; set; }
@@ -46,9 +46,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 
         public RequestManager(IPAMSecretResolver resolver)
         {
-            var loggerFactory = (ILoggerFactory) new LoggerFactory();
-            var reqLogger = loggerFactory.CreateLogger<RequestManager>();
-            _logger = reqLogger;
+            // Must use LogHandler so we plug into the orchestrator's NLog pipeline.
+            // A bare-new LoggerFactory has no providers, so LogTrace/LogError calls
+            // get silently dropped.
+            _logger = LogHandler.GetClassLogger<RequestManager>();
             _resolver = resolver;
         }
 
@@ -56,6 +57,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         {
             _logger.LogTrace($"Attempting to resolved PAM eligible field {name}");
             return _resolver.Resolve(value);
+        }
+
+        // Parse the InventoryBlackList store property into a case-insensitive set.
+        // Tolerates null/empty (Command may send the property as JSON null when the user
+        // leaves the field blank, which DefaultValueHandling.Populate doesn't override).
+        private static HashSet<string> ParseInventoryBlacklist(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            return new HashSet<string>(
+                raw.Split(',').Select(s => s.Trim()).Where(s => s.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
         }
 
         public bool DoesCryptoCertificateObjectExist(CertStoreInfo ci, string cryptoCertObjectName,
@@ -755,6 +769,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 var storePath = addConfig.CertificateStoreDetails.StorePath;
                 _logger.LogTrace($"publicCertStoreName: {publicCertStoreName} storePath: {storePath}");
 
+                // pubcert and sharedcert are appliance-wide on DataPower (owned by the
+                // default domain). DataPower's REST mgmt rejects writes through any
+                // non-default domain context with a 403. Reject upfront with a clear
+                // message instead of letting the appliance's "Forbidden." come back.
                 if (storePath.Contains("pubcert"))
                 {
                     if (storePath != publicCertStoreName && (storePath != "default\\" + publicCertStoreName))
@@ -764,6 +782,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                             Result = OrchestratorJobStatusJobResult.Failure,
                             JobHistoryId = addConfig.JobHistoryId,
                             FailureMessage = "You can only add to pubcert on the default domain"
+                        };
+                    }
+                }
+
+                if (storePath.Contains("sharedcert"))
+                {
+                    if (storePath != "sharedcert" && storePath != "default\\sharedcert")
+                    {
+                        return new JobResult
+                        {
+                            Result = OrchestratorJobStatusJobResult.Failure,
+                            JobHistoryId = addConfig.JobHistoryId,
+                            FailureMessage = "You can only add to sharedcert on the default domain"
                         };
                     }
                 }
@@ -869,8 +900,27 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
             catch (Exception ex)
             {
-                _logger.LogTrace($"Error on {alias}: {LogHandler.FlattenException(ex)}");
-                apiClient.SaveConfig();
+                // Silent-failure trap fix: this catch used to log Trace, run SaveConfig
+                // (persisting whatever partial state the appliance had reached when the
+                // Add blew up), and fall through to return Success. So a 403 / 404 / 500
+                // from DataPower would surface as a green checkmark in Command with no
+                // cert anywhere on the appliance. Now: log Error and propagate Failure
+                // with the appliance's response body when available.
+                var apiEx = DataPowerApiException.Find(ex);
+                var detail = apiEx != null
+                    ? $"{apiEx.Operation} returned HTTP {(int)apiEx.StatusCode} {apiEx.StatusCode}: {apiEx.ResponseBody}"
+                    : ex.Message;
+
+                _logger.LogError(ex,
+                    "Add to {Domain}\\{Store} failed for alias {Alias}: {ErrorMessage}",
+                    ci.Domain, ci.CertificateStore, alias, LogHandler.FlattenException(ex));
+
+                return new JobResult
+                {
+                    Result = OrchestratorJobStatusJobResult.Failure,
+                    JobHistoryId = addConfig.JobHistoryId,
+                    FailureMessage = $"Add failed for '{alias}' on {ci.Domain}\\{ci.CertificateStore}: {detail}"
+                };
             }
 
             _logger.MethodExit(LogLevel.Debug);
@@ -1029,7 +1079,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public JobResult GetPublicCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
-            SubmitInventoryUpdate submitInventory, CertStoreInfo ci)
+            SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
             {
@@ -1040,19 +1090,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 _logger.LogTrace($"Public Cert List Response {JsonConvert.SerializeObject(viewCertificateCollection)}");
 
                 var intCount = 0;
-                var s = ci.InventoryBlackList.Split(',');
-
+                var blackList = ParseInventoryBlacklist(ci.InventoryBlackList);
                 var intMax = ci.InventoryPageSize;
-                var blackList = s;
 
-                _logger.LogTrace($"Max Inventory: {intMax} Inventory Black List Count: {blackList.Length}");
+                _logger.LogTrace($"Max Inventory: {intMax} Inventory Black List Count: {blackList.Count}");
 
                 _logger.LogTrace("Got App Config Settings from File");
 
                 // ReSharper disable once CollectionNeverQueried.Local
                 var inventoryItems = new List<CurrentInventoryItem>();
-                if (viewCertificateCollection.PubFileStoreLocation.PubFileStore?.PubFiles != null)
-                    foreach (var pc in viewCertificateCollection.PubFileStoreLocation.PubFileStore.PubFiles)
+                var pubFiles = viewCertificateCollection?.PubFileStoreLocation?.PubFileStore?.PubFiles;
+                flow?.Step("GetPublicCerts.ParseResponse", $"pubFileCount={pubFiles?.Length ?? 0}, blacklistCount={blackList.Count}");
+                if (pubFiles != null)
+                    foreach (var pc in pubFiles)
                     {
                         _logger.LogTrace($"Looping through public files: {pc.Name}");
                         var viewCertDetail = new ViewPubCertificateDetailRequest(pc.Name);
@@ -1104,6 +1154,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                     }
 
                 _logger.LogTrace($"Inventory Items: {JsonConvert.SerializeObject(inventoryItems)}");
+                flow?.Step("GetPublicCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
                 submitInventory.Invoke(inventoryItems);
                 _logger.LogTrace("Submitted Inventory Items...");
 
@@ -1122,7 +1173,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public JobResult GetCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
-            SubmitInventoryUpdate submitInventory, CertStoreInfo ci)
+            SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
             {
@@ -1133,13 +1184,27 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 _logger.LogTrace($"Get Certs Response: {JsonConvert.SerializeObject(viewCertificateCollection)}");
                 // ReSharper disable once CollectionNeverQueried.Local
                 var inventoryItems = new List<CurrentInventoryItem>();
-                var s = ci.InventoryBlackList.Split(',');
-                var blackList = s;
+                var blackList = ParseInventoryBlacklist(ci.InventoryBlackList);
 
                 _logger.LogTrace("Start loop");
 
-                foreach (var cc in viewCertificateCollection.CryptoCertificates)
-                    if (!string.IsNullOrEmpty(cc.Name))
+                var allCryptoCerts = viewCertificateCollection?.CryptoCertificates ?? Array.Empty<CryptoCertificate>();
+
+                // /mgmt/config/{domain}/CryptoCertificate returns every CryptoCertificate
+                // object in the domain regardless of which filestore directory its file
+                // lives in. Filter to those whose Filename URI scheme matches the store
+                // path we're inventorying so a "default\sharedcert" job doesn't show
+                // pubcert: entries (and vice versa).
+                var storeScheme = (ci.CertificateStore ?? string.Empty).Trim() + ":";
+                var cryptoCerts = allCryptoCerts
+                    .Where(cc => cc?.CertFile != null &&
+                                 cc.CertFile.StartsWith(storeScheme, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                flow?.Step("GetCerts.ParseResponse",
+                    $"certCount={cryptoCerts.Length} (filtered from {allCryptoCerts.Length} by scheme '{storeScheme}'), blacklistCount={blackList.Count}");
+                foreach (var cc in cryptoCerts)
+                    if (cc != null && !string.IsNullOrEmpty(cc.Name))
                     {
                         _logger.LogTrace($"Looping through Certificate Store files: {cc.Name}");
 
@@ -1182,7 +1247,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                         }
                     }
 
+                _logger.LogTrace($"Submitting {inventoryItems.Count} inventory items");
+                flow?.Step("GetCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
                 submitInventory.Invoke(inventoryItems);
+                _logger.LogTrace("Submitted Inventory Items.");
 
                 return new JobResult
                 {

@@ -31,9 +31,14 @@
 
 ## Overview
 
-The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported. This integration can add/replace certificates in any domain\directory combination. 
+The IBM DataPower Universal Orchestrator manages certificates on IBM DataPower appliances. It targets the appliance's REST Management Interface (typically port `5554`) and uses the same store-path model across every job type: `<domain>\<directory>`.
 
-* DataPower
+```mermaid
+flowchart LR
+    A[Keyfactor Command] -->|Discovery / Inventory / Add / Remove| B[Orchestrator]
+    B -->|HTTPS REST| C[DataPower REST Mgmt]
+    C -->|domains, filestore, CryptoCertificate, CryptoKey| D[(DataPower Appliance)]
+```
 
 
 
@@ -51,8 +56,6 @@ The DataPower Universal Orchestrator extension is supported by Keyfactor. If you
 Before installing the DataPower Universal Orchestrator extension, we recommend that you install [kfutil](https://github.com/Keyfactor/kfutil). Kfutil is a command-line tool that simplifies the process of creating store types, installing extensions, and instantiating certificate stores in Keyfactor Command.
 
 
-The IBM DataPower Orchestrator allows for the management of certificates in the IBM Datapower platform. Inventory, Add and Remove functions are supported.  This integration can add/replace certificates in any domain\directory combination.  For example default\pubcert
-
 
 ## DataPower Certificate Store Type
 
@@ -60,7 +63,7 @@ To use the DataPower Universal Orchestrator extension, you **must** create the D
 
 
 
-
+TODO Overview is a required section
 
 
 
@@ -71,7 +74,7 @@ To use the DataPower Universal Orchestrator extension, you **must** create the D
 |--------------|------------------------------------------------------------------------------------------------------------------------|
 | Add          | ✅ Checked        |
 | Remove       | 🔲 Unchecked     |
-| Discovery    | 🔲 Unchecked  |
+| Discovery    | ✅ Checked  |
 | Reenrollment | 🔲 Unchecked |
 | Create       | 🔲 Unchecked     |
 
@@ -114,7 +117,7 @@ the Keyfactor Command Portal
    | Capability | DataPower | Store type name orchestrator will register with. Check the box to allow entry of value |
    | Supports Add | ✅ Checked | Check the box. Indicates that the Store Type supports Management Add |
    | Supports Remove | 🔲 Unchecked |  Indicates that the Store Type supports Management Remove |
-   | Supports Discovery | 🔲 Unchecked |  Indicates that the Store Type supports Discovery |
+   | Supports Discovery | ✅ Checked | Check the box. Indicates that the Store Type supports Discovery |
    | Supports Reenrollment | 🔲 Unchecked |  Indicates that the Store Type supports Reenrollment |
    | Supports Create | 🔲 Unchecked |  Indicates that the Store Type supports store creation |
    | Needs Server | ✅ Checked | Determines if a target server name is required when creating store |
@@ -182,6 +185,7 @@ the Keyfactor Command Portal
    Should be true, http is not supported.
 
    ![DataPower Custom Field - ServerUseSsl](docsource/images/DataPower-custom-field-ServerUseSsl-dialog.png)
+   ![DataPower Custom Field - ServerUseSsl](docsource/images/DataPower-custom-field-ServerUseSsl-validation-options-dialog.png)
 
 
 
@@ -189,6 +193,7 @@ the Keyfactor Command Portal
    Comma seperated list of alias values you do not want to inventory from DataPower.
 
    ![DataPower Custom Field - InventoryBlackList](docsource/images/DataPower-custom-field-InventoryBlackList-dialog.png)
+   ![DataPower Custom Field - InventoryBlackList](docsource/images/DataPower-custom-field-InventoryBlackList-validation-options-dialog.png)
 
 
 
@@ -196,6 +201,7 @@ the Keyfactor Command Portal
    Comma seperated list of alias values you do not want to inventory from DataPower.
 
    ![DataPower Custom Field - Protocol](docsource/images/DataPower-custom-field-Protocol-dialog.png)
+   ![DataPower Custom Field - Protocol](docsource/images/DataPower-custom-field-Protocol-validation-options-dialog.png)
 
 
 
@@ -203,6 +209,7 @@ the Keyfactor Command Portal
    This probably will remain pubcert unless someone changed the default name in DataPower.
 
    ![DataPower Custom Field - PublicCertStoreName](docsource/images/DataPower-custom-field-PublicCertStoreName-dialog.png)
+   ![DataPower Custom Field - PublicCertStoreName](docsource/images/DataPower-custom-field-PublicCertStoreName-validation-options-dialog.png)
 
 
 
@@ -210,6 +217,7 @@ the Keyfactor Command Portal
    This determines the page size during the inventory calls. (100 should be fine).
 
    ![DataPower Custom Field - InventoryPageSize](docsource/images/DataPower-custom-field-InventoryPageSize-dialog.png)
+   ![DataPower Custom Field - InventoryPageSize](docsource/images/DataPower-custom-field-InventoryPageSize-validation-options-dialog.png)
 
 
 
@@ -285,7 +293,7 @@ the Keyfactor Command Portal
    | Category | Select "IBM Data Power" or the customized certificate store name from the previous step. |
    | Container | Optional container to associate certificate store with. |
    | Client Machine | The Client Machine field should contain the IP or Domain name and Port Needed for REST API Access.  For SSH Access, Port 22 will be used. |
-   | Store Path | The Store Path field should always be / unless we later determine there are alternate locations needed. |
+   | Store Path | The store path uses the format domain\directory (e.g., default\pubcert, production-api\cert). The Discovery job can automatically find all valid store paths on an appliance. |
    | Orchestrator | Select an approved orchestrator capable of managing `DataPower` certificates. Specifically, one with the `DataPower` capability. |
    | ServerUsername | Api UserName for DataPower. (or valid PAM key if the username is stored in a KF Command configured PAM integration). |
    | ServerPassword | A password for DataPower API access.  Used for inventory.(or valid PAM key if the password is stored in a KF Command configured PAM integration). |
@@ -317,7 +325,7 @@ the Keyfactor Command Portal
    | Category | Select "IBM Data Power" or the customized certificate store name from the previous step. |
    | Container | Optional container to associate certificate store with. |
    | Client Machine | The Client Machine field should contain the IP or Domain name and Port Needed for REST API Access.  For SSH Access, Port 22 will be used. |
-   | Store Path | The Store Path field should always be / unless we later determine there are alternate locations needed. |
+   | Store Path | The store path uses the format domain\directory (e.g., default\pubcert, production-api\cert). The Discovery job can automatically find all valid store paths on an appliance. |
    | Orchestrator | Select an approved orchestrator capable of managing `DataPower` certificates. Specifically, one with the `DataPower` capability. |
    | Properties.ServerUsername | Api UserName for DataPower. (or valid PAM key if the username is stored in a KF Command configured PAM integration). |
    | Properties.ServerPassword | A password for DataPower API access.  Used for inventory.(or valid PAM key if the password is stored in a KF Command configured PAM integration). |
@@ -355,47 +363,98 @@ Please refer to the **Universal Orchestrator (remote)** usage section ([PAM prov
 > The content in this section can be supplemented by the [official Command documentation](https://software.keyfactor.com/Core-OnPrem/Current/Content/ReferenceGuide/Certificate%20Stores.htm?Highlight=certificate%20store).
 
 
+## Discovering Certificate Stores with the Discovery Job
+Discovery enumerates all domains on the appliance, lists each domain's filestore, and emits a store path for every certificate-relevant directory.
+
+### How It Works
+
+1. **Enumerate domains** — `GET /mgmt/domains/config/` returns every application domain on the appliance.
+2. **Resolve directory filter** — the comma-separated **Directories to search** field on the Discovery job is parsed; if blank, the orchestrator falls back to `cert,pubcert,sharedcert`. Trailing colons (`cert:`) are stripped before matching.
+3. **List directories per domain** — `GET /mgmt/filestore/{domain}` returns every filestore *location*. The trailing-colon names returned by DataPower are matched against the resolved filter.
+4. **Emit store paths** — `<domain>\cert` for every domain that has a `cert` directory; `default\pubcert` and `default\sharedcert` once each (other domains' views of those are skipped because they alias the same physical data).
+5. **Submit to Command** — the discovered paths are sent back via `SubmitDiscoveryUpdate` for operator approval.
+
+The orchestrator is resilient to one inaccessible domain: it logs a warning and continues with the rest.
+
+### Configuration
+
+Discovery only needs the appliance connection details — no store path is required:
+
+| Field | Description |
+|-------|-------------|
+| **Client Machine** | DataPower appliance hostname/IP and REST mgmt port (e.g. `datapower.example.com:5554`) |
+| **Server Username** | API username for DataPower (PAM-eligible) |
+| **Server Password** | API password (PAM-eligible) |
+| **Directories to search** | Comma-separated list of directory names to filter against (e.g. `cert,pubcert,sharedcert`). Leave blank to use the standard set. Custom DataPower scheme names can be included. |
+
+The FlowLogger summary on the job's result records which filter list was applied:
+
+```
+[OK] ResolveDirsToSearch - source=user (key=dirs), dirs=[cert,sharedcert]
+```
+
+vs
+
+```
+[OK] ResolveDirsToSearch - source=default, dirs=[cert,pubcert,sharedcert]
+```
 
 
-## Test Cases
 
-*** 
 
-#### INVENTORY TEST CASES
-Case Number|Case Name|Case Description|Expected Results|Passed
-------------|---------|----------------|--------------|----------
-1|Pubcert Inventory No Black List Default Domain|Should Inventory Everything in the DataPower pubcert directory on the Default Domain|Keyfactor Inventory Matches pubcert default domain inventory|True
-1a|Pubcert Inventory No Black List Default Domain using PAM Credentials|Should Inventory Everything in the DataPower pubcert directory on the Default Domain using credentials stored in a PAM Provider|Keyfactor Inventory Matches pubcert default domain inventory|True
-1b|Pubcert Inventory With Black List Default Domain|Should Inventory Everything in the DataPower pubcert directory on the Default Domain Outside of Black List Items ex: Test.pem,Test2.pem|Keyfactor Inventory Matches pubcert default domain inventory outside of Black List Items|True
-2|Pubcert Inventory No Black List *testdomain\pubcert* path|Should Inventory Everything in the DataPower pubcert directory on the *testdomain\pubcert* path|Keyfactor Inventory Matches pubcert default domain inventory|True
-2a|Pubcert Inventory With Black List *testdomain\pubcert* path|Should Inventory Everything in the DataPower pubcert directory on the *testdomain\pubcert* path Outside of Black List Items ex: Cert1.pem,Cert2.pem|Keyfactor Inventory Matches pubcert default domain inventory outside of Black List Items|True
-3|Private Key Cert Inventory No Black List Default Domain|Should Inventory Everything in the DataPower cert directory on the Default Domain|Keyfactor Inventory Matches pubcert default domain inventory|True
-3a|Private Key Cert Inventory No Black List Default Domain with Credentials Stored in PAM Provider|Should Inventory Everything in the DataPower cert directory on the Default Domain with Credentials Stored in PAM Provider|Keyfactor Inventory Matches pubcert default domain inventory|True
-3b|Private Key Cert Inventory With Black List Default Domain|Should Inventory Everything in the DataPower cert directory on the Default Domain Oustide of Black List Items ex: Test.pem,Test2.pem|Keyfactor Inventory Matches cert default domain inventory outside of Black List Items|True
-4|Private Key Cert Inventory No Black List *testdomain\cert* path|Should Inventory Everything in the DataPower cert directory on the  *testdomain\cert* path|Keyfactor Inventory Matches *testdomain\cert* path| inventory|True
-4a|Private Key Cert Inventory With Black List *testdomain\cert* path||Should Inventory Everything in the DataPower cert directory on the  *testdomain\cert* path|Keyfactor Inventory Matches *testdomain\cert* path Oustide of Black List Items ex: Test,Test2|Keyfactor Inventory Matches everything in *testdomain\cert* path outside of Black List Items
+## Store Path Format
 
-***
+Every Inventory, Management (Add / Remove), and Discovery operation uses the same path shape:
 
-#### ADD/REMOVE TEST CASES
-Case Number|Case Name|Case Description|Overwrite Flag|Alias Name|Expected Results|Passed
-------------|---------|----------------|--------------|----------|----------------|--------------
-1|Pubcert Add with Alias Default Domain|Will create new Cert, Key and Pem/crt entry|False|cryptoobjs|Crypto Key Created, Crypto Cert Created, Pem/Crt created|True
-1a|Pubcert Overwrite with Alias Default Domain|Will Replaced Cert, Key and Pem/crt entry|true|cryptoobjs|Crypto Key Replaced, Crypto Cert Replaced, Pem/Crt Replaced|True
-1b|Pubcert Add without Alias Default Domain|Will create new Cert, Key and Pem/crt entry with GUID as name|False|cryptoobjs|Crypto Key Created, Crypto Cert Created, Pem/Crt created with GUID as name|True
-2|Private Key Add with Alias Default Domain|Will create new Cert, Key and Pem/crt entry|False|cryptoobjs|Crypto Key Created, Crypto Cert Created, Pem/Crt created|True
-2a|Private Key Overwrite with Alias Default Domain|Will Replaced Cert, Key and Pem/crt entry|true|cryptoobjs|Crypto Key Replaced, Crypto Cert Replaced, Pem/Crt Replaced|True
-2b|Private Key Add without Alias Default Domain|Will create new Cert, Key and Pem/crt entry with GUID as name|False|cryptoobjs|Crypto Key Created, Crypto Cert Created, Pem/Crt created with GUID as name|True
-2c|Private Key Cert Add with Alias *testdomain\cert* path|Will create new Cert, Key and Pem/crt entry in *testdomain\cert* path|False|cryptoobjs|Crypto Key Created, Crypto Cert Created, Pem/Crt created in *testdomain\pubcert* path|True
-2d|Private Key Cert Add with Alias *testdomain\cert* path|Will create new Cert, Key and Pem/crt entry in *testdomain\cert* path with PAM Credentials|False|cryptoobjs|Crypto Key Created, Crypto Cert Created, Pem/Crt created in *testdomain\pubcert* path gettting credentials from a PAM Provider|True
-3a|Private Key Cert Overwrite with Alias *testdomain\cert* path|Will Replaced Cert, Key and Pem/crt entry in *testdomain\cert* path|true|cryptoobjs|Crypto Key Replaced, Crypto Cert Replaced, Pem/Crt Replaced in *testdomain\pubcert* path|True
-3b|Private Key Cert Add without Alias *testdomain\cert* path|Will create new Cert, Key and Pem/crt entry with GUID as name in *testdomain\cert* path|False|cryptoobjs|Crypto Key Created, Crypto Cert Created, Pem/Crt created with GUID as name in *testdomain\cert* path|True
-4|Remove Private Key and Cert From Default Domain|Remove Private Key and Cert From Default Domain|False|cryptoobjs|Crypto Certificate, Crypto Key and Pem/Crt are removed from Data Power|True
-4a|Remove Private Key and Cert From *testdomain\cert* path|Remove Private Key and Cert From *testdomain\cert* path|False|cryptoobjs|Crypto Certificate, Crypto Key and Pem/Crt are removed from Data Power *testdomain\cert* path|True
-4b|Remove PubCert|Remove PubCert|False|cryptoobjs|Error Occurs, cannot remove Public Certs|True
-4c|Remove Private Key and Cert From *testdomain\cert* path with PAM Credentials|Remove Private Key and Cert From *testdomain\cert* path using credentials stored in a PAM Provider|False|cryptoobjs|Crypto Certificate, Crypto Key and Pem/Crt are removed from Data Power *testdomain\cert* path|True
+```
+<domain>\<directory>
+```
 
-***
+| Part | Description | Examples |
+|------|-------------|----------|
+| **Domain** | A DataPower application domain. Every appliance has at least `default`; additional domains are created for environment / application isolation. | `default`, `production-api`, `staging` |
+| **Directory** | The certificate store directory within that domain. | `cert`, `pubcert`, `sharedcert` |
+
+### Per-Domain vs Appliance-Wide
+
+Two of the three directories are **appliance-wide**: every domain can read them, but they are physically a single store owned by the `default` domain. Mutations (Add / Remove) through any non-default domain context are rejected by DataPower with `HTTP 403 Forbidden`. Discovery and the orchestrator's Add path enforce this:
+
+| Directory | Scope | Discovery emits as | Contents |
+|-----------|-------|--------------------|----------|
+| `cert` | Per-domain | `<domain>\cert` (one per domain) | Domain-specific certificates and private keys, exposed as `CryptoCertificate` / `CryptoKey` configuration objects in that domain |
+| `pubcert` | Appliance-wide | `default\pubcert` (once per appliance) | Public / trusted CA certificates the appliance uses to verify other parties |
+| `sharedcert` | Appliance-wide | `default\sharedcert` (once per appliance) | Shared identity certs used by appliance-level services or every domain (e.g. the management-interface TLS cert, an enterprise-wide signing cert) |
+
+So a 10-domain appliance produces **12** discovered store paths (10 × `<domain>\cert` plus `default\pubcert` and `default\sharedcert`), not 30.
+
+> **Add / Remove against `<non-default>\pubcert` or `<non-default>\sharedcert`** is rejected by the orchestrator before the call leaves with `"You can only add to <store> on the default domain"`. This matches DataPower's actual permission model and keeps operators from chasing silent 403s.
+
+## Inventory and Management
+
+Inventory and Add / Remove jobs target a specific store path. The orchestrator branches on the directory:
+
+- `<domain>\cert` and `default\sharedcert` → reads `CryptoCertificate` config objects from `/mgmt/config/{domain}/CryptoCertificate`, filters to those whose `Filename` URI scheme matches the store (so a `default\sharedcert` job ignores the `cert:///` and `pubcert:///` entries that share the domain), and submits the certs.
+- `default\pubcert` → reads files directly from the `pubcert:` filestore.
+
+Every job emits a `[FLOW:...]` breadcrumb summary that is appended to the `JobResult.FailureMessage` regardless of success or failure. The summary lists every step (Validate, ParseConfig, CreateApiClient, GetCerts.ParseResponse, GetCerts.SubmitInventory, ...) with timing and any error reason. Operators can read it directly from the job-history pane in Command without enabling Trace logging.
+
+### Optional Store Properties
+
+| Property | Description |
+|----------|-------------|
+| **Inventory Black List** | Comma-separated alias names to exclude from Inventory results (e.g. `system-cert,internal-test`). Case-insensitive. Empty by default. |
+| **Inventory Page Size** | Maximum number of certs returned per Inventory submission. Defaults to `100`. |
+| **Public Cert Store Name** | Name of the appliance's public-cert directory (default `pubcert`). Override only if the appliance has been re-configured. |
+| **Protocol** | `https` (default) or `http`. Use `http` for lab appliances without the REST mgmt TLS profile configured. |
+
+## Migration Note
+
+Earlier releases of this orchestrator emitted `<each-domain>\pubcert` and `<each-domain>\sharedcert` from Discovery — N copies all aliasing the same physical store. If your environment has previously approved any of those non-default entries as cert stores in Command, they are now orphans:
+
+- Inventory against them returns nothing (the underlying objects all point at `<scheme>:///` paths owned by `default`).
+- Add and Remove are rejected by the orchestrator with a clear message.
+
+Re-run Discovery, approve the canonical `default\pubcert` and `default\sharedcert`, and remove the duplicates from your Command instance.
 
 
 ## License
