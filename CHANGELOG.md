@@ -1,4 +1,25 @@
-## 1.2.0 - unreleased
+## 1.2.1
+
+### Fixed
+* Discovery against appliances with a large number of application domains
+  (200+) where the orchestrator's API user lacks read access to many of them
+  no longer produces a SQL truncation failure in Keyfactor Command. Two
+  related fixes:
+  * `FlowLogger.GetSummary()` output is now capped at 3500 characters with
+    a `[truncated, N chars omitted; check orchestrator log for full
+    breadcrumb]` marker. Defense-in-depth against Command's
+    `AgentJobStatus.Message` column overflow (NVARCHAR(4000)).
+  * Discovery aggregates per-domain failures by error signature instead of
+    emitting one `FAIL` and one `SKIP` line per failed domain. Identical
+    HTTP errors across N domains collapse into one summary line with a
+    count and a 5-domain sample. Successful domains still emit one
+    `Discovered-<path>` step each.
+
+  Net effect on a 235-domain appliance with 114 inaccessible domains: the
+  breadcrumb summary drops from ~50 KB and 235+ step lines to ~1 KB and
+  ~10 step lines, well under Command's column cap.
+
+## 1.2.0
 
 ### Added
 * Discovery job: automatically enumerates all application domains on a DataPower
