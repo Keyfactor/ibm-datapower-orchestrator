@@ -15,6 +15,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Keyfactor.Extensions.Orchestrator.DataPower.Client;
 using Keyfactor.Logging;
 using Keyfactor.Orchestrators.Common.Enums;
@@ -52,6 +53,29 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
         // to search" value into JobProperties. Try the common key names since the
         // exact casing has shifted across Command versions.
         private static readonly string[] DirsToSearchKeys = { "dirs", "Dirs", "directories", "Directories", "DirsToSearch" };
+
+        // Extracts a stable group key for an exception thrown by a per-domain
+        // ListFileStoreDirectories call. Strips domain-specific bits (the /_links/self/href
+        // URL changes per domain) so identical RBAC failures across hundreds of domains
+        // collapse into a single error group.
+        private static readonly Regex ErrorMessageRegex = new Regex(
+            "\"error\"\\s*:\\s*\\[\\s*\"([^\"]+)\"",
+            RegexOptions.Compiled | RegexOptions.Singleline);
+
+        private static string ErrorSignatureOf(Exception ex)
+        {
+            var apiEx = DataPowerApiException.Find(ex);
+            if (apiEx != null)
+            {
+                var m = ErrorMessageRegex.Match(apiEx.ResponseBody ?? string.Empty);
+                if (m.Success)
+                    return $"HTTP {(int)apiEx.StatusCode} {apiEx.StatusCode}: {m.Groups[1].Value}";
+                return $"HTTP {(int)apiEx.StatusCode} {apiEx.StatusCode}";
+            }
+
+            var msg = ex?.Message ?? "(no message)";
+            return msg.Length > 80 ? msg.Substring(0, 80) + "..." : msg;
+        }
 
         private static (HashSet<string> Dirs, string Source) ResolveDirsToSearch(DiscoveryJobConfiguration config)
         {
@@ -175,52 +199,80 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                     flow.Branch($"PerDomain (count={domainCount})");
                     try
                     {
+                        var listedOk = 0;
+                        var emptyNameSkipped = 0;
+
+                        // Group per-domain failures by error signature instead of emitting a
+                        // FAIL+SKIP line per failed domain. On appliances with 200+ domains and
+                        // a non-trivial RBAC story, that easily produces a 50 KB summary which
+                        // overflows Command's AgentJobStatus.Message column. One aggregated SKIP
+                        // line per error class scales fine and is far more readable.
+                        var errorGroups = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
                         foreach (var domain in domains)
                         {
                             if (string.IsNullOrWhiteSpace(domain?.Name))
                             {
-                                flow.Skip("Domain", "empty domain name");
+                                emptyNameSkipped++;
                                 continue;
                             }
 
+                            List<string> directories;
                             try
                             {
-                                List<string> directories = null;
-                                flow.Step($"ListFileStore-{domain.Name}", () =>
-                                {
-                                    directories = apiClient.ListFileStoreDirectories(domain.Name);
-                                });
-
-                                // DataPower's filestore location names carry a trailing colon
-                                // (e.g. "cert:" / "pubcert:" / "sharedcert:"). Strip it before
-                                // matching and before composing the store path.
-                                var certDirectories = directories
-                                    .Select(d => d?.TrimEnd(':'))
-                                    .Where(d => !string.IsNullOrEmpty(d) && certStoreDirectories.Contains(d))
-                                    .ToList();
-
-                                var isDefault = string.Equals(domain.Name, DefaultDomainName, StringComparison.OrdinalIgnoreCase);
-                                foreach (var dir in certDirectories)
-                                {
-                                    if (ApplianceWideDirectories.Contains(dir) && !isDefault)
-                                    {
-                                        flow.Skip($"{domain.Name}\\{dir}", "appliance-wide; emitted only under default");
-                                        continue;
-                                    }
-
-                                    var storePath = $"{domain.Name}\\{dir}";
-                                    discoveredLocations.Add(storePath);
-                                    flow.Step($"Discovered-{storePath}");
-                                }
+                                directories = apiClient.ListFileStoreDirectories(domain.Name);
                             }
                             catch (Exception ex)
                             {
                                 // Resilient by design: one inaccessible domain should not abort discovery
-                                var inner = DescribeException(ex);
-                                flow.Skip($"Domain-{domain.Name}", $"unable to list directories: {inner}");
-                                Logger.LogWarning(ex, "Unable to list filestore directories for domain {DomainName}: {ErrorMessage}",
-                                    domain.Name, inner);
+                                var signature = ErrorSignatureOf(ex);
+                                if (!errorGroups.TryGetValue(signature, out var list))
+                                {
+                                    list = new List<string>();
+                                    errorGroups[signature] = list;
+                                }
+                                list.Add(domain.Name);
+                                Logger.LogWarning(ex,
+                                    "Unable to list filestore directories for domain {DomainName}: {ErrorMessage}",
+                                    domain.Name, DescribeException(ex));
+                                continue;
                             }
+
+                            listedOk++;
+
+                            // DataPower's filestore location names carry a trailing colon
+                            // (e.g. "cert:" / "pubcert:" / "sharedcert:"). Strip it before
+                            // matching and before composing the store path.
+                            var certDirectories = directories
+                                .Select(d => d?.TrimEnd(':'))
+                                .Where(d => !string.IsNullOrEmpty(d) && certStoreDirectories.Contains(d))
+                                .ToList();
+
+                            var isDefault = string.Equals(domain.Name, DefaultDomainName, StringComparison.OrdinalIgnoreCase);
+                            foreach (var dir in certDirectories)
+                            {
+                                if (ApplianceWideDirectories.Contains(dir) && !isDefault)
+                                    continue; // appliance-wide; emitted only under default
+
+                                var storePath = $"{domain.Name}\\{dir}";
+                                discoveredLocations.Add(storePath);
+                                flow.Step($"Discovered-{storePath}");
+                            }
+                        }
+
+                        var listedDetail = $"listed={listedOk}/{domainCount}";
+                        if (emptyNameSkipped > 0)
+                            listedDetail += $", emptyName={emptyNameSkipped}";
+                        if (errorGroups.Count > 0)
+                            listedDetail += $", failed={errorGroups.Values.Sum(v => v.Count)}";
+                        flow.Step("ListFileStore", listedDetail);
+
+                        foreach (var kvp in errorGroups.OrderByDescending(g => g.Value.Count))
+                        {
+                            var sample = kvp.Value.Take(5).ToList();
+                            var more = kvp.Value.Count - sample.Count;
+                            var sampleStr = string.Join(", ", sample) + (more > 0 ? $" (+{more} more)" : "");
+                            flow.Skip($"DomainsFailed[{kvp.Key}]", $"{kvp.Value.Count} domain(s): {sampleStr}");
                         }
                     }
                     finally
