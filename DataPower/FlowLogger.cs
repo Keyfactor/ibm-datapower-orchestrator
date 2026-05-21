@@ -172,6 +172,12 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 
         public bool HasFailures => _steps.Any(s => s.Status == StepStatus.Failed);
 
+        // Command's AgentJobStatus.Message column has a hard length cap (typically
+        // NVARCHAR(4000)). Truncate aggressively so a job result update never fails
+        // with "String or binary data would be truncated". Leaves headroom for the
+        // FailureMessage prefix the caller adds.
+        private const int MaxSummaryChars = 3500;
+
         public string GetSummary()
         {
             var hasFailures = HasFailures;
@@ -202,7 +208,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
             sb.Append("----------------------------------------");
 
-            return sb.ToString();
+            var summary = sb.ToString();
+            if (summary.Length > MaxSummaryChars)
+            {
+                var omitted = summary.Length - MaxSummaryChars;
+                summary = summary.Substring(0, MaxSummaryChars)
+                    + $"\n... [truncated, {omitted} chars omitted; check orchestrator log for full breadcrumb]";
+            }
+            return summary;
         }
 
         public void Dispose()
