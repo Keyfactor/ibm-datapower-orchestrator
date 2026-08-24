@@ -16,16 +16,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.Requests
 {
     public class DeleteCertificateRequest : Request
     {
-        public DeleteCertificateRequest(string domain, string filename)
+        public DeleteCertificateRequest(string domain, string filename, string folder = "cert")
         {
             Domain = domain;
             Filename = filename.Trim();
+            Folder = folder.Trim();
             Method = "DELETE";
         }
 
+        [Newtonsoft.Json.JsonIgnore] public string Folder { get; set; }
+
         public new string GetResource()
         {
-            return "/mgmt/filestore/" + Domain + "/cert/" + Filename;
+            return "/mgmt/filestore/" + Domain + "/" + Folder + "/" + Filename;
         }
     }
 }

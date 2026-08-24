@@ -9,16 +9,18 @@ Tools to populate a DataPower test appliance with domains and certificates so yo
 | Application domains | 10 | `test-domain-01` through `test-domain-10` |
 | Certs in `default/pubcert` | 10 | appliance-wide, visible from every domain (filestore PEMs only) |
 | Cert + key files in `default/sharedcert` | 20 | 10 cert + 10 key PEMs |
-| `default` CryptoCertificate / CryptoKey objects (sharedcert) | 10 + 10 | each pointing at a `sharedcert:///` PEM |
+| `default` CryptoCertificate / CryptoKey objects (sharedcert) | 10 + 10 | each pointing at a `sharedcert:///` PEM, living in the `default` domain |
 | Cert + key files in `{domain}/cert` | 200 | 10 cert + 10 key files per domain (10 domains x 20 files) |
 | Per-domain CryptoCertificate config objects | 100 | 10 per domain, each pointing at one cert PEM in `cert:///` |
 | Per-domain CryptoKey config objects | 100 | 10 per domain, each pointing at one key PEM in `cert:///` |
 
 Every cert and key uploaded is a **unique** self-signed pair, so Inventory results will show distinct thumbprints (no duplicates).
 
-> **Why config objects matter:** for per-domain `cert/` directories the orchestrator's Inventory enumerates `CryptoCertificate` config objects (`/mgmt/config/{domain}/CryptoCertificate`), *not* the filestore. PEMs sitting in `cert:///` without a matching CryptoCertificate object are invisible to Inventory. Folder 5 creates both. Pubcert / sharedcert are read from the filestore directly, so they don't need config objects.
+> **Why config objects matter:** the orchestrator's Inventory enumerates `CryptoCertificate` config objects (`/mgmt/config/{domain}/CryptoCertificate`), *not* the filestore, for both `cert` and `sharedcert`. A PEM sitting in `cert:///` or `sharedcert:///` without a matching CryptoCertificate object is invisible to Inventory. Folders 4 and 5 create both file and object for every cert. Pubcert is the one exception - Command reads it straight from the filestore, no config object needed.
 
-After running, Discovery should return **30 store paths** (10 domains x 3 directories: `cert`, `pubcert`, `sharedcert`).
+> **sharedcert is per-domain, like cert.** Its underlying filestore is appliance-wide (owned by `default`), but the CryptoCertificate/CryptoKey objects that reference a `sharedcert://` file are scoped to whichever domain they were created in - same as `cert`. Discovery reflects that: it emits `{domain}\sharedcert` only for domains that actually own a CryptoCertificate object referencing `sharedcert://`, not for every domain that can merely *read* the filestore. With just folder 4 run, that's `default\sharedcert` only (10 objects, all created in `default`). Folder 4b additionally creates one in `test-domain-01`, so after running it Discovery should also surface `test-domain-01\sharedcert`.
+
+After running folders 1-6 (not 4b), Discovery should return **12 store paths**: 10 `{domain}\cert` (one per test domain) + 1 `default\pubcert` + 1 `default\sharedcert`. Running folder 4b adds a 13th: `test-domain-01\sharedcert`.
 
 ## Files
 
@@ -95,14 +97,12 @@ If those all return data, run the Discovery job from Keyfactor Command and confi
 
 ### Sharedcert gap cases (folder 4b)
 
-Folder 4b deliberately creates two `sharedcert` certs that today's Inventory job (`GetCerts` in `RequestManager.cs`) does **not** return for a `default\sharedcert` store, because it only reads CryptoCertificate config objects in the `default` domain:
+Folder 4b creates two `sharedcert` certs exercising the edges of the per-domain sharedcert design:
 
-| Cert | What it is | Why Inventory misses it today |
-|------|------------|-------------------------------|
-| `test-shared-gap-crossdomain` | A `sharedcert:///` file with its CryptoCertificate config object created in `test-domain-01` instead of `default` | `GetCerts` only queries `/mgmt/config/default/CryptoCertificate` — objects in other domains are invisible even though the underlying file is appliance-wide |
-| `test-shared-gap-orphan` | A raw `sharedcert:///` file with no CryptoCertificate config object at all | `GetCerts` never reads the filestore directly, only config objects |
-
-Running an Inventory job against `default\sharedcert` after populating folder 4b should return the 10 certs from folder 4 but **not** these two — confirming the coverage gap. Once the fix (aggregating CryptoCertificate objects across all domains, and/or reading the filestore directly) is in place, both should appear.
+| Cert | What it is | Expected behavior |
+|------|------------|--------------------|
+| `test-shared-gap-crossdomain` | A `sharedcert:///` file with its CryptoCertificate config object created in `test-domain-01`, not `default` | This is the case the per-domain redesign exists to handle correctly. Discovery should surface a separate `test-domain-01\sharedcert` store (alongside `default\sharedcert`), and an Inventory job against `test-domain-01\sharedcert` should return exactly this one cert - not the 10 from `default\sharedcert`. Renewing it (Management Add) should update the object in `test-domain-01`, not create a duplicate under `default`. |
+| `test-shared-gap-orphan` | A raw `sharedcert:///` file in `default` with no CryptoCertificate config object at all | Still invisible to both Discovery and Inventory, same as an orphan file would be for `cert`. This is expected, not a bug - sharedcert now follows the same "config objects are the source of truth" rule as cert, and DataPower itself has no domain to attribute an object-less file to. Confirms `default\sharedcert`'s Inventory count doesn't inflate to include it.
 
 ## Cleanup
 
