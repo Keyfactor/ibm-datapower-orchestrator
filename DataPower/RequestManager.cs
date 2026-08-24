@@ -1172,45 +1172,89 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
+        private const string SharedCertStoreName = "sharedcert";
+
         public JobResult GetCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
             SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
             {
                 _logger.LogTrace("GetCerts");
-                var viewCert = new ViewCryptoCertificatesRequest(apiClient.Domain);
-                _logger.LogTrace($"Get Certs Request: {JsonConvert.SerializeObject(viewCert)}");
-                var viewCertificateCollection = apiClient.ViewCertificates(viewCert);
-                _logger.LogTrace($"Get Certs Response: {JsonConvert.SerializeObject(viewCertificateCollection)}");
+
+                var storeScheme = (ci.CertificateStore ?? string.Empty).Trim() + ":";
+                var isSharedCert = string.Equals(ci.CertificateStore?.Trim(), SharedCertStoreName,
+                    StringComparison.OrdinalIgnoreCase);
+
+                // sharedcert is appliance-wide (owned by the default domain's filestore),
+                // but a CryptoCertificate config object pointing at a sharedcert:// file can
+                // be defined in any domain - /mgmt/config/{domain}/CryptoCertificate only
+                // returns objects that live in that one domain. Aggregate across every
+                // domain for sharedcert so those cross-domain references aren't missed; all
+                // other stores (cert, pubcert) keep the original single-domain behavior.
+                var domainsToQuery = new List<string> { apiClient.Domain };
+                if (isSharedCert)
+                {
+                    var domains = apiClient.ListDomains() ?? new List<DomainInfo>();
+                    var domainNames = domains
+                        .Select(d => d?.Name)
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    if (domainNames.Count > 0)
+                        domainsToQuery = domainNames;
+                }
+
+                var candidates = new List<(string Domain, CryptoCertificate Cert)>();
+                var domainsFailed = 0;
+                foreach (var domain in domainsToQuery)
+                {
+                    try
+                    {
+                        var viewCert = new ViewCryptoCertificatesRequest(domain);
+                        _logger.LogTrace($"Get Certs Request: {JsonConvert.SerializeObject(viewCert)}");
+                        var viewCertificateCollection = apiClient.ViewCertificates(viewCert);
+                        _logger.LogTrace($"Get Certs Response: {JsonConvert.SerializeObject(viewCertificateCollection)}");
+
+                        // /mgmt/config/{domain}/CryptoCertificate returns every CryptoCertificate
+                        // object in the domain regardless of which filestore directory its file
+                        // lives in. Filter to those whose Filename URI scheme matches the store
+                        // path we're inventorying so a "default\sharedcert" job doesn't show
+                        // pubcert: entries (and vice versa).
+                        var certsInDomain = viewCertificateCollection?.CryptoCertificates ?? Array.Empty<CryptoCertificate>();
+                        foreach (var cc in certsInDomain)
+                            if (cc?.CertFile != null &&
+                                cc.CertFile.StartsWith(storeScheme, StringComparison.OrdinalIgnoreCase))
+                                candidates.Add((domain, cc));
+                    }
+                    catch (Exception ex)
+                    {
+                        // Resilient by design, matching Discovery: one inaccessible domain
+                        // (RBAC, disabled domain, etc.) should not abort the whole inventory.
+                        domainsFailed++;
+                        _logger.LogWarning(ex,
+                            "Unable to list CryptoCertificate objects for domain {DomainName}: {ErrorMessage}",
+                            domain, LogHandler.FlattenException(ex));
+                    }
+                }
+
                 // ReSharper disable once CollectionNeverQueried.Local
                 var inventoryItems = new List<CurrentInventoryItem>();
                 var blackList = ParseInventoryBlacklist(ci.InventoryBlackList);
-
-                _logger.LogTrace("Start loop");
-
-                var allCryptoCerts = viewCertificateCollection?.CryptoCertificates ?? Array.Empty<CryptoCertificate>();
-
-                // /mgmt/config/{domain}/CryptoCertificate returns every CryptoCertificate
-                // object in the domain regardless of which filestore directory its file
-                // lives in. Filter to those whose Filename URI scheme matches the store
-                // path we're inventorying so a "default\sharedcert" job doesn't show
-                // pubcert: entries (and vice versa).
-                var storeScheme = (ci.CertificateStore ?? string.Empty).Trim() + ":";
-                var cryptoCerts = allCryptoCerts
-                    .Where(cc => cc?.CertFile != null &&
-                                 cc.CertFile.StartsWith(storeScheme, StringComparison.OrdinalIgnoreCase))
-                    .ToArray();
+                var seenThumbprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var duplicatesSkipped = 0;
 
                 flow?.Step("GetCerts.ParseResponse",
-                    $"certCount={cryptoCerts.Length} (filtered from {allCryptoCerts.Length} by scheme '{storeScheme}'), blacklistCount={blackList.Count}");
-                foreach (var cc in cryptoCerts)
+                    $"certCount={candidates.Count} (across {domainsToQuery.Count} domain(s), {domainsFailed} failed, scheme='{storeScheme}'), blacklistCount={blackList.Count}");
+
+                _logger.LogTrace("Start loop");
+                foreach (var (domain, cc) in candidates)
                     if (cc != null && !string.IsNullOrEmpty(cc.Name))
                     {
-                        _logger.LogTrace($"Looping through Certificate Store files: {cc.Name}");
+                        _logger.LogTrace($"Looping through Certificate Store files: {domain}/{cc.Name}");
 
                         try
                         {
-                            var viewCertDetail = new ViewCertificateDetailRequest(apiClient.Domain)
+                            var viewCertDetail = new ViewCertificateDetailRequest(domain)
                             {
                                 CertObjectRequest = new CertificateObjectRequest
                                 {
@@ -1227,8 +1271,19 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 
                             _logger.LogTrace($"Created X509Certificate2: {cert.SerialNumber} : {cert.Subject}");
 
+                            if (cert.Thumbprint == null) continue;
+
+                            // The same physical sharedcert:// file can be referenced by a
+                            // differently-named CryptoCertificate object in more than one
+                            // domain - de-dupe by thumbprint so it doesn't show up twice.
+                            if (isSharedCert && !seenThumbprints.Add(cert.Thumbprint))
+                            {
+                                duplicatesSkipped++;
+                                continue;
+                            }
+
                             _logger.LogTrace($"Add to list: {cc.Name}");
-                            if (!blackList.Contains(cc.Name) && cert.Thumbprint != null)
+                            if (!blackList.Contains(cc.Name))
                                 inventoryItems.Add(
                                     new CurrentInventoryItem
                                     {
@@ -1243,12 +1298,13 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                         catch (Exception ex)
                         {
                             _logger.LogError(
-                                $"Certificate not retrievable: Error on {cc.Name}: {LogHandler.FlattenException(ex)}");
+                                $"Certificate not retrievable: Error on {domain}/{cc.Name}: {LogHandler.FlattenException(ex)}");
                         }
                     }
 
                 _logger.LogTrace($"Submitting {inventoryItems.Count} inventory items");
-                flow?.Step("GetCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
+                flow?.Step("GetCerts.SubmitInventory",
+                    $"itemCount={inventoryItems.Count}, duplicatesSkipped={duplicatesSkipped}");
                 submitInventory.Invoke(inventoryItems);
                 _logger.LogTrace("Submitted Inventory Items.");
 
