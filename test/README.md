@@ -38,12 +38,13 @@ cd test
 pwsh -File generate-test-certs.ps1
 ```
 
-This writes three iteration-data files into `test/data/`:
+This writes iteration-data files into `test/data/`:
 
 | File | Rows | Columns | Used by |
 |------|------|---------|---------|
 | `pubcert-data.json` | 10 | `certPemB64` | folder 3 |
 | `sharedcert-data.json` | 10 | `certPemB64`, `keyPemB64` | folder 4 |
+| `sharedcert-gap-data.json` | 1 | `crossDomainCertPemB64`, `orphanCertPemB64` | folder 4b |
 | `perdomain-data.json` | 100 | `certPemB64`, `keyPemB64` | folder 5 |
 
 ### 2. Import into Postman
@@ -66,6 +67,7 @@ Use **Collection Runner** (Postman -> Runner) for each folder:
 | 2 | Save Default Domain Config | 1 | - |
 | 3 | Populate Pubcert | from data | `data/pubcert-data.json` |
 | 4 | Populate Sharedcert | from data | `data/sharedcert-data.json` (4 requests per iteration: filestore PUT cert, filestore PUT key, POST CryptoCertificate in `default`, POST CryptoKey in `default`) |
+| 4b | Populate Sharedcert Gap Cases | **1** | `data/sharedcert-gap-data.json` — see below |
 | 5 | Populate Per-Domain Cert Directory | from data | `data/perdomain-data.json` (4 requests per iteration: filestore PUT cert, filestore PUT key, POST CryptoCertificate, POST CryptoKey) |
 | 6 | Save All Domains | **10** | - |
 | 7 | Verify | 1 | - |
@@ -90,6 +92,17 @@ The "Verify" folder has GET requests that mirror the Discovery job's calls:
 - `GET /mgmt/filestore/default/sharedcert` - should list at least 10 test-shared-XX.pem files
 
 If those all return data, run the Discovery job from Keyfactor Command and confirm it surfaces the expected 30 store paths.
+
+### Sharedcert gap cases (folder 4b)
+
+Folder 4b deliberately creates two `sharedcert` certs that today's Inventory job (`GetCerts` in `RequestManager.cs`) does **not** return for a `default\sharedcert` store, because it only reads CryptoCertificate config objects in the `default` domain:
+
+| Cert | What it is | Why Inventory misses it today |
+|------|------------|-------------------------------|
+| `test-shared-gap-crossdomain` | A `sharedcert:///` file with its CryptoCertificate config object created in `test-domain-01` instead of `default` | `GetCerts` only queries `/mgmt/config/default/CryptoCertificate` — objects in other domains are invisible even though the underlying file is appliance-wide |
+| `test-shared-gap-orphan` | A raw `sharedcert:///` file with no CryptoCertificate config object at all | `GetCerts` never reads the filestore directly, only config objects |
+
+Running an Inventory job against `default\sharedcert` after populating folder 4b should return the 10 certs from folder 4 but **not** these two — confirming the coverage gap. Once the fix (aggregating CryptoCertificate objects across all domains, and/or reading the filestore directly) is in place, both should appear.
 
 ## Cleanup
 
