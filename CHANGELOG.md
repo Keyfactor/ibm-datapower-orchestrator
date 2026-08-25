@@ -13,7 +13,7 @@
     emitting one `FAIL` and one `SKIP` line per failed domain. Identical
     HTTP errors across N domains collapse into one summary line with a
     count and a 5-domain sample. Successful domains still emit one
-    `Discovered-<path>` step each.
+    `Discovered-<path>` step each. 
 
   Net effect on a 235-domain appliance with 114 inaccessible domains: the
   breadcrumb summary drops from ~50 KB and 235+ step lines to ~1 KB and
