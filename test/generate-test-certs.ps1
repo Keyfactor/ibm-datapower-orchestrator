@@ -6,7 +6,7 @@
 # Output (relative to this script):
 #   data/pubcert-data.json        -  10 rows: { certPemB64 }
 #   data/sharedcert-data.json     -  10 rows: { certPemB64 }
-#   data/sharedcert-gap-data.json -   1 row:  { crossDomainCertPemB64, orphanCertPemB64 }
+#   data/sharedcert-gap-data.json -   1 row:  { crossDomainCertPemB64, orphanCertPemB64, badP12B64 }
 #   data/perdomain-data.json      - 100 rows: { certPemB64, keyPemB64 }
 #
 # In Postman Collection Runner, drop the matching JSON file into the "Data"
@@ -31,42 +31,48 @@ function ConvertTo-Pem {
     return $sb.ToString()
 }
 
+function New-SelfSignedCertObject {
+    param([string]$Subject, [int]$Days, [System.Security.Cryptography.RSA]$Rsa)
+
+    $req = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+        $Subject,
+        $Rsa,
+        [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+        [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+    )
+
+    # DataPower's CryptoCertificate loader rejects barebones certs ("unreadable,
+    # corrupt, or invalid certificate file") - it expects a real end-entity TLS cert
+    # with the usual extensions. Add BasicConstraints, KeyUsage, EKU, and SKI.
+    $req.CertificateExtensions.Add(
+        [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new(
+            $false, $false, 0, $true))
+    $req.CertificateExtensions.Add(
+        [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
+            ([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor
+             [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment),
+            $true))
+    $ekuOids = [System.Security.Cryptography.OidCollection]::new()
+    [void]$ekuOids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.1'))  # serverAuth
+    [void]$ekuOids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.2'))  # clientAuth
+    $req.CertificateExtensions.Add(
+        [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new(
+            $ekuOids, $false))
+    $req.CertificateExtensions.Add(
+        [System.Security.Cryptography.X509Certificates.X509SubjectKeyIdentifierExtension]::new(
+            $req.PublicKey, $false))
+
+    $notBefore = [DateTimeOffset]::UtcNow.AddMinutes(-5)
+    $notAfter  = [DateTimeOffset]::UtcNow.AddDays($Days)
+    return $req.CreateSelfSigned($notBefore, $notAfter)
+}
+
 function New-CertKeyPair {
     param([string]$Subject, [int]$Days)
 
     $rsa = [System.Security.Cryptography.RSA]::Create(2048)
     try {
-        $req = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
-            $Subject,
-            $rsa,
-            [System.Security.Cryptography.HashAlgorithmName]::SHA256,
-            [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
-        )
-
-        # DataPower's CryptoCertificate loader rejects barebones certs ("unreadable,
-        # corrupt, or invalid certificate file") - it expects a real end-entity TLS cert
-        # with the usual extensions. Add BasicConstraints, KeyUsage, EKU, and SKI.
-        $req.CertificateExtensions.Add(
-            [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new(
-                $false, $false, 0, $true))
-        $req.CertificateExtensions.Add(
-            [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
-                ([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor
-                 [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment),
-                $true))
-        $ekuOids = [System.Security.Cryptography.OidCollection]::new()
-        [void]$ekuOids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.1'))  # serverAuth
-        [void]$ekuOids.Add([System.Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.2'))  # clientAuth
-        $req.CertificateExtensions.Add(
-            [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new(
-                $ekuOids, $false))
-        $req.CertificateExtensions.Add(
-            [System.Security.Cryptography.X509Certificates.X509SubjectKeyIdentifierExtension]::new(
-                $req.PublicKey, $false))
-
-        $notBefore = [DateTimeOffset]::UtcNow.AddMinutes(-5)
-        $notAfter  = [DateTimeOffset]::UtcNow.AddDays($Days)
-        $cert = $req.CreateSelfSigned($notBefore, $notAfter)
+        $cert = New-SelfSignedCertObject -Subject $Subject -Days $Days -Rsa $rsa
 
         $certBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
         $certPem = ConvertTo-Pem -Bytes $certBytes -Header 'CERTIFICATE'
@@ -80,6 +86,27 @@ function New-CertKeyPair {
             CertPemB64 = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($certPem))
             KeyPemB64  = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($keyPem))
         }
+    }
+    finally {
+        $rsa.Dispose()
+    }
+}
+
+function New-Pkcs12Blob {
+    # A .p12/.pfx is binary DER (PKCS#12), not PEM text. RequestManager.GetCerts
+    # currently does `new X509Certificate2(Encoding.UTF8.GetBytes(EncodedCert.Value))`
+    # on whatever DataPower's CryptoCertificate detail response returns - a raw
+    # PKCS#12 blob doesn't parse as a bare X.509 cert that way, so DataPower serving
+    # this file's content back reliably reproduces the "cert not retrievable" /
+    # unresolved-cert path GetCerts now reports as a Warning instead of silently
+    # dropping.
+    param([string]$Subject, [int]$Days, [string]$Password)
+
+    $rsa = [System.Security.Cryptography.RSA]::Create(2048)
+    try {
+        $cert = New-SelfSignedCertObject -Subject $Subject -Days $Days -Rsa $rsa
+        $pfxBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $Password)
+        return [Convert]::ToBase64String($pfxBytes)
     }
     finally {
         $rsa.Dispose()
@@ -103,12 +130,14 @@ $sharedcert = @(1..10 | ForEach-Object {
 })
 $sharedcert | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $dataDir 'sharedcert-data.json') -Encoding ASCII
 
-Write-Host "Generating sharedcert gap-case pair (cross-domain + orphan)..." -ForegroundColor Cyan
+Write-Host "Generating sharedcert gap-case pair (cross-domain + orphan + bad .p12)..." -ForegroundColor Cyan
 $crossDomain = New-CertKeyPair -Subject "CN=Sharedcert-Gap-CrossDomain" -Days $ValidDays
 $orphan = New-CertKeyPair -Subject "CN=Sharedcert-Gap-Orphan" -Days $ValidDays
+$badP12 = New-Pkcs12Blob -Subject "CN=Sharedcert-Gap-BadP12" -Days $ValidDays -Password 'P12TestPassword123!'
 $sharedcertGap = @([PSCustomObject]@{
     crossDomainCertPemB64 = $crossDomain.CertPemB64
     orphanCertPemB64      = $orphan.CertPemB64
+    badP12B64              = $badP12
 })
 $sharedcertGap | ConvertTo-Json -Depth 5 -AsArray | Set-Content -Path (Join-Path $dataDir 'sharedcert-gap-data.json') -Encoding ASCII
 

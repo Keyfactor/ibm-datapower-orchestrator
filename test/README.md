@@ -46,7 +46,7 @@ This writes iteration-data files into `test/data/`:
 |------|------|---------|---------|
 | `pubcert-data.json` | 10 | `certPemB64` | folder 3 |
 | `sharedcert-data.json` | 10 | `certPemB64`, `keyPemB64` | folder 4 |
-| `sharedcert-gap-data.json` | 1 | `crossDomainCertPemB64`, `orphanCertPemB64` | folder 4b |
+| `sharedcert-gap-data.json` | 1 | `crossDomainCertPemB64`, `orphanCertPemB64`, `badP12B64` | folder 4b |
 | `perdomain-data.json` | 100 | `certPemB64`, `keyPemB64` | folder 5 |
 
 ### 2. Import into Postman
@@ -93,16 +93,17 @@ The "Verify" folder has GET requests that mirror the Discovery job's calls:
 - `GET /mgmt/filestore/default/pubcert` - should list at least 10 test-pubcert-XX.pem files
 - `GET /mgmt/filestore/default/sharedcert` - should list at least 10 test-shared-XX.pem files
 
-If those all return data, run the Discovery job from Keyfactor Command and confirm it surfaces the expected 30 store paths.
+If those all return data, run the Discovery job from Keyfactor Command and confirm it surfaces the expected store paths (see the count in "What it creates" above).
 
 ### Sharedcert gap cases (folder 4b)
 
-Folder 4b creates two `sharedcert` certs exercising the edges of the per-domain sharedcert design:
+Folder 4b creates three `sharedcert` certs exercising the edges of the per-domain sharedcert design:
 
 | Cert | What it is | Expected behavior |
 |------|------------|--------------------|
 | `test-shared-gap-crossdomain` | A `sharedcert:///` file with its CryptoCertificate config object created in `test-domain-01`, not `default` | This is the case the per-domain redesign exists to handle correctly. Discovery should surface a separate `test-domain-01\sharedcert` store (alongside `default\sharedcert`), and an Inventory job against `test-domain-01\sharedcert` should return exactly this one cert - not the 10 from `default\sharedcert`. Renewing it (Management Add) should update the object in `test-domain-01`, not create a duplicate under `default`. |
-| `test-shared-gap-orphan` | A raw `sharedcert:///` file in `default` with no CryptoCertificate config object at all | Still invisible to both Discovery and Inventory, same as an orphan file would be for `cert`. This is expected, not a bug - sharedcert now follows the same "config objects are the source of truth" rule as cert, and DataPower itself has no domain to attribute an object-less file to. Confirms `default\sharedcert`'s Inventory count doesn't inflate to include it.
+| `test-shared-gap-orphan` | A raw `sharedcert:///` file in `default` with no CryptoCertificate config object at all | Still invisible to both Discovery and Inventory, same as an orphan file would be for `cert`. This is expected, not a bug - sharedcert now follows the same "config objects are the source of truth" rule as cert, and DataPower itself has no domain to attribute an object-less file to. Confirms `default\sharedcert`'s Inventory count doesn't inflate to include it. |
+| `test-shared-gap-badp12` | A CryptoCertificate object in `default` pointing at a binary `.p12` file instead of a PEM | DataPower accepts the upload and the config object without complaint, but `GetCerts`' per-cert detail fetch can't parse a raw PKCS#12 blob as a bare X.509 cert. Inventory against `default\sharedcert` should report a **Warning** result (not silent Success) naming `test-shared-gap-badp12` as unresolved, alongside the 10 real certs from folder 4 that did resolve. |
 
 ## Cleanup
 
@@ -110,7 +111,7 @@ To remove the test data when you're done, run the **Cleanup (optional)** folder 
 
 > **Notes:**
 > - Files inside per-domain `cert/` and the per-domain `CryptoCertificate` / `CryptoKey` objects are removed implicitly when the test domain is deleted, so the Cleanup folder doesn't enumerate them.
-> - The `default` domain's `CryptoCertificate` / `CryptoKey` objects (created by folder 4 for sharedcert) are NOT cascaded — Cleanup deletes them explicitly. Same for the appliance-wide pubcert / sharedcert filestore entries.
+> - The `default` domain's `CryptoCertificate` / `CryptoKey` objects (created by folder 4 for sharedcert, plus the bad-.p12 object from folder 4b) are NOT cascaded — Cleanup deletes them explicitly. Same for the appliance-wide pubcert / sharedcert filestore entries.
 
 ## Troubleshooting
 

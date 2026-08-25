@@ -238,7 +238,7 @@
       "description": "Run with 10 iterations using `data/sharedcert-data.json`. Per iteration: PUT cert PEM, PUT key PEM, POST CryptoCertificate config object pointing at the cert (sharedcert:///), POST CryptoKey config object pointing at the key. The crypto objects live in the `default` domain since sharedcert is appliance-wide."
     },
     {
-      "name": "4b. Populate Sharedcert Gap Cases (should be missed by Inventory today)",
+      "name": "4b. Populate Sharedcert Gap Cases",
       "item": [
         {
           "name": "Add cross-domain cert to default/sharedcert (test-shared-gap-crossdomain.pem)",
@@ -328,9 +328,68 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Add bad .p12 to default/sharedcert (test-shared-gap-badp12.p12)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file\": {\n    \"name\": \"test-shared-gap-badp12.p12\",\n    \"content\": \"{{badP12B64}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/filestore/default/sharedcert/test-shared-gap-badp12.p12",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "filestore",
+                "default",
+                "sharedcert",
+                "test-shared-gap-badp12.p12"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create CryptoCertificate object in default pointing at the bad .p12 (test-shared-gap-badp12)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"CryptoCertificate\": {\n    \"name\": \"test-shared-gap-badp12\",\n    \"mAdminState\": \"enabled\",\n    \"Filename\": \"sharedcert:///test-shared-gap-badp12.p12\",\n    \"PasswordAlias\": \"off\",\n    \"IgnoreExpiration\": \"off\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/config/default/CryptoCertificate",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "config",
+                "default",
+                "CryptoCertificate"
+              ]
+            }
+          },
+          "response": []
         }
       ],
-      "description": "Run with 1 iteration using `data/sharedcert-gap-data.json`. Reproduces the two coverage gaps in `GetCerts` for `default\\sharedcert`: (1) a CryptoCertificate config object that lives in an application domain (test-domain-01) but points at a `sharedcert:///` file - invisible today because GetCerts only queries CryptoCertificate objects in the `default` domain; (2) a raw sharedcert file with no CryptoCertificate config object at all - invisible today because GetCerts never reads the filestore directly. Neither cert should appear in a `default\\sharedcert` Inventory result until both gaps are fixed."
+      "description": "Run with 1 iteration using `data/sharedcert-gap-data.json`. Reproduces three edge cases in `default\\sharedcert` / per-domain sharedcert Inventory: (1) a CryptoCertificate config object that lives in an application domain (test-domain-01) but points at a `sharedcert:///` file - now correctly surfaced as its own `test-domain-01\\sharedcert` store since the per-domain redesign; (2) a raw sharedcert file with no CryptoCertificate config object at all - still invisible to both Discovery and Inventory (tracked as a known follow-up); (3) a CryptoCertificate object in `default` pointing at a `.p12` file - DataPower accepts the upload and the config object, but GetCerts' per-cert detail fetch can't parse a binary PKCS#12 blob as a bare X.509 cert, so Inventory against `default\\sharedcert` should report a Warning result naming `test-shared-gap-badp12` as unresolved, alongside the 10 real certs from folder 4 that did resolve."
     },
     {
       "name": "5. Populate Per-Domain Cert Directory",
@@ -834,9 +893,51 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Delete default CryptoCertificate (test-shared-gap-badp12)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/config/default/CryptoCertificate/test-shared-gap-badp12",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "config",
+                "default",
+                "CryptoCertificate",
+                "test-shared-gap-badp12"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete sharedcert gap file (test-shared-gap-badp12.p12)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/filestore/default/sharedcert/test-shared-gap-badp12.p12",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "filestore",
+                "default",
+                "sharedcert",
+                "test-shared-gap-badp12.p12"
+              ]
+            }
+          },
+          "response": []
         }
       ],
-      "description": "Tear down the test data when you're done. Run with 10 iterations. Test domains delete cascades to their per-domain cert files + crypto objects (including the gap CryptoCertificate object in test-domain-01); appliance-wide pubcert/sharedcert files and the default-domain crypto objects (created by folders 4 and 4b) need explicit deletes — included here."
+      "description": "Tear down the test data when you're done. Run with 10 iterations. Test domains delete cascades to their per-domain cert files + crypto objects (including the gap CryptoCertificate object in test-domain-01); appliance-wide pubcert/sharedcert files and the default-domain crypto objects (created by folders 4 and 4b, including the bad-.p12 object) need explicit deletes — included here."
     }
   ],
   "auth": {
