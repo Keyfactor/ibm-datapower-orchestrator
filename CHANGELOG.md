@@ -1,3 +1,59 @@
+## 1.2.2
+
+### Fixed
+* **sharedcert Inventory was silently incomplete.** `GetCerts` only read `CryptoCertificate`
+  config objects from the domain named in the store path (`default` for a
+  `default\sharedcert` store). Because `sharedcert:` files are appliance-wide but the
+  config *objects* that reference them are domain-scoped, a sharedcert cert whose
+  object was created in an application domain instead of `default` was invisible to
+  Inventory — on one appliance, 24 files in `sharedcert:` inventoried as 1. Any raw
+  `sharedcert:///` file with no config object at all is still invisible to Inventory
+  (matches how `cert` has always worked — config objects are the source of truth, not
+  the filestore).
+* **sharedcert renewal could silently duplicate instead of updating.** Management's
+  `Add` always targeted the `default` domain for both the filestore write and the
+  `CryptoCertificate`/`CryptoKey` object update. Renewing a sharedcert cert whose
+  object lived in an application domain created a new duplicate object under
+  `default` rather than updating the original, leaving the stale object behind.
+* `DeleteCertificateRequest` hardcoded the `cert` folder in its filestore delete URL
+  regardless of the actual store type, which would have misdirected sharedcert file
+  deletes during a replace/remove.
+* **Inventory reported Success even when some certs silently failed to resolve.**
+  If a `CryptoCertificate` object's detail fetch/parse threw (e.g. a `.p12` that
+  can't be parsed as a bare `X509Certificate2`), `GetCerts` logged the error and
+  dropped that cert, but still returned `Success` with no indication anything was
+  skipped — visible only by comparing `ParseResponse`'s `certCount` against
+  `SubmitInventory`'s `itemCount` in the flow summary. `GetCerts` now returns
+  `Warning` with a message listing which cert(s) couldn't be retrieved whenever the
+  submitted item count is lower than the matched cert count.
+
+### Known follow-up (not yet fixed)
+* A raw `sharedcert:///` file with no `CryptoCertificate` config object at all is
+  still invisible to both Discovery and Inventory. Closing that gap requires reading
+  `sharedcert` at the filestore layer (like `pubcert`), including `.p12`/
+  `PasswordAlias` handling — a larger feature addition, tracked separately rather
+  than folded into this release.
+
+### Changed
+* **sharedcert stores are now discovered and managed per-domain, like `cert`,
+  instead of only under `default`.** Discovery queries each domain's
+  `CryptoCertificate` objects and emits `<domain>\sharedcert` only for domains that
+  actually own one referencing a `sharedcert://` file — domains that can merely
+  *read* the appliance-wide filestore but don't reference it get no store, so this
+  doesn't produce an empty store per domain on large appliances. `(domain, name)` is
+  DataPower's real uniqueness key for a config object, so a store model has to key
+  off both, not just `name` under a single domain-less `default\sharedcert` store —
+  per-domain stores match that key and let Management know exactly which domain to
+  update on renewal.
+* Management's file-write path (`FileDomainFor()`) is now separate from the
+  config-object path: a sharedcert filestore write/delete always targets `default`
+  (DataPower rejects sharedcert filestore writes from any other domain context), while
+  the `CryptoCertificate`/`CryptoKey` object create/update/delete targets `ci.Domain`
+  — wherever the config object actually lives. The old guard that rejected Add against
+  any sharedcert store path other than `default\sharedcert` is removed; any
+  `<domain>\sharedcert` is now valid.
+* Added `net10.0` as a build target alongside `net6.0` and `net8.0`.
+
 ## 1.2.1
 
 ### Fixed
