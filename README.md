@@ -173,30 +173,35 @@ the Keyfactor Command Portal
    Should be true, http is not supported.
 
    ![DataPower Custom Field - ServerUseSsl](docsource/images/DataPower-custom-field-ServerUseSsl-dialog.svg)
+   ![DataPower Custom Field - ServerUseSsl](docsource/images/DataPower-custom-field-ServerUseSsl-validation-options-dialog.svg)
 
 
    ###### Inventory Black List
    Comma seperated list of alias values you do not want to inventory from DataPower.
 
    ![DataPower Custom Field - InventoryBlackList](docsource/images/DataPower-custom-field-InventoryBlackList-dialog.svg)
+   ![DataPower Custom Field - InventoryBlackList](docsource/images/DataPower-custom-field-InventoryBlackList-validation-options-dialog.svg)
 
 
    ###### Protocol Name
    Comma seperated list of alias values you do not want to inventory from DataPower.
 
    ![DataPower Custom Field - Protocol](docsource/images/DataPower-custom-field-Protocol-dialog.svg)
+   ![DataPower Custom Field - Protocol](docsource/images/DataPower-custom-field-Protocol-validation-options-dialog.svg)
 
 
    ###### Public Cert Store Name
    This probably will remain pubcert unless someone changed the default name in DataPower.
 
    ![DataPower Custom Field - PublicCertStoreName](docsource/images/DataPower-custom-field-PublicCertStoreName-dialog.svg)
+   ![DataPower Custom Field - PublicCertStoreName](docsource/images/DataPower-custom-field-PublicCertStoreName-validation-options-dialog.svg)
 
 
    ###### Inventory Page Size
    This determines the page size during the inventory calls. (100 should be fine).
 
    ![DataPower Custom Field - InventoryPageSize](docsource/images/DataPower-custom-field-InventoryPageSize-dialog.svg)
+   ![DataPower Custom Field - InventoryPageSize](docsource/images/DataPower-custom-field-InventoryPageSize-validation-options-dialog.svg)
 
 
    </details>
