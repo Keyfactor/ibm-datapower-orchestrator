@@ -4,9 +4,10 @@
 # and writes them as Postman Collection Runner iteration-data files.
 #
 # Output (relative to this script):
-#   data/pubcert-data.json     -  10 rows: { certPemB64 }
-#   data/sharedcert-data.json  -  10 rows: { certPemB64 }
-#   data/perdomain-data.json   - 100 rows: { certPemB64, keyPemB64 }
+#   data/pubcert-data.json        -  10 rows: { certPemB64 }
+#   data/sharedcert-data.json     -  10 rows: { certPemB64 }
+#   data/sharedcert-gap-data.json -   1 row:  { crossDomainCertPemB64, orphanCertPemB64 }
+#   data/perdomain-data.json      - 100 rows: { certPemB64, keyPemB64 }
 #
 # In Postman Collection Runner, drop the matching JSON file into the "Data"
 # slot when running each folder; iteration count is taken from the file.
@@ -102,6 +103,15 @@ $sharedcert = @(1..10 | ForEach-Object {
 })
 $sharedcert | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $dataDir 'sharedcert-data.json') -Encoding ASCII
 
+Write-Host "Generating sharedcert gap-case pair (cross-domain + orphan)..." -ForegroundColor Cyan
+$crossDomain = New-CertKeyPair -Subject "CN=Sharedcert-Gap-CrossDomain" -Days $ValidDays
+$orphan = New-CertKeyPair -Subject "CN=Sharedcert-Gap-Orphan" -Days $ValidDays
+$sharedcertGap = @([PSCustomObject]@{
+    crossDomainCertPemB64 = $crossDomain.CertPemB64
+    orphanCertPemB64      = $orphan.CertPemB64
+})
+$sharedcertGap | ConvertTo-Json -Depth 5 -AsArray | Set-Content -Path (Join-Path $dataDir 'sharedcert-gap-data.json') -Encoding ASCII
+
 Write-Host "Generating 100 per-domain cert+key pairs..." -ForegroundColor Cyan
 $perdomain = @(1..100 | ForEach-Object {
     $p = New-CertKeyPair -Subject "CN=Perdomain-Test-$($_.ToString('000'))" -Days $ValidDays
@@ -111,6 +121,7 @@ $perdomain | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $dataDir 'pe
 
 Write-Host ""
 Write-Host "Done. Wrote:" -ForegroundColor Green
-Write-Host "  $dataDir\pubcert-data.json    (10 rows)"
-Write-Host "  $dataDir\sharedcert-data.json (10 rows)"
-Write-Host "  $dataDir\perdomain-data.json  (100 rows)"
+Write-Host "  $dataDir\pubcert-data.json        (10 rows)"
+Write-Host "  $dataDir\sharedcert-data.json     (10 rows)"
+Write-Host "  $dataDir\sharedcert-gap-data.json (1 row)"
+Write-Host "  $dataDir\perdomain-data.json      (100 rows)"

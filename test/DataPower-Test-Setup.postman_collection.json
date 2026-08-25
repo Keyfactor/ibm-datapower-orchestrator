@@ -238,6 +238,101 @@
       "description": "Run with 10 iterations using `data/sharedcert-data.json`. Per iteration: PUT cert PEM, PUT key PEM, POST CryptoCertificate config object pointing at the cert (sharedcert:///), POST CryptoKey config object pointing at the key. The crypto objects live in the `default` domain since sharedcert is appliance-wide."
     },
     {
+      "name": "4b. Populate Sharedcert Gap Cases (should be missed by Inventory today)",
+      "item": [
+        {
+          "name": "Add cross-domain cert to default/sharedcert (test-shared-gap-crossdomain.pem)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file\": {\n    \"name\": \"test-shared-gap-crossdomain.pem\",\n    \"content\": \"{{crossDomainCertPemB64}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/filestore/default/sharedcert/test-shared-gap-crossdomain.pem",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "filestore",
+                "default",
+                "sharedcert",
+                "test-shared-gap-crossdomain.pem"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create CryptoCertificate object in test-domain-01 pointing at sharedcert:// file (test-shared-gap-crossdomain)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"CryptoCertificate\": {\n    \"name\": \"test-shared-gap-crossdomain\",\n    \"mAdminState\": \"enabled\",\n    \"Filename\": \"sharedcert:///test-shared-gap-crossdomain.pem\",\n    \"PasswordAlias\": \"off\",\n    \"IgnoreExpiration\": \"off\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/config/test-domain-01/CryptoCertificate",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "config",
+                "test-domain-01",
+                "CryptoCertificate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add orphan cert to default/sharedcert with no config object (test-shared-gap-orphan.pem)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file\": {\n    \"name\": \"test-shared-gap-orphan.pem\",\n    \"content\": \"{{orphanCertPemB64}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/filestore/default/sharedcert/test-shared-gap-orphan.pem",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "filestore",
+                "default",
+                "sharedcert",
+                "test-shared-gap-orphan.pem"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Run with 1 iteration using `data/sharedcert-gap-data.json`. Reproduces the two coverage gaps in `GetCerts` for `default\\sharedcert`: (1) a CryptoCertificate config object that lives in an application domain (test-domain-01) but points at a `sharedcert:///` file - invisible today because GetCerts only queries CryptoCertificate objects in the `default` domain; (2) a raw sharedcert file with no CryptoCertificate config object at all - invisible today because GetCerts never reads the filestore directly. Neither cert should appear in a `default\\sharedcert` Inventory result until both gaps are fixed."
+    },
+    {
       "name": "5. Populate Per-Domain Cert Directory",
       "item": [
         {
@@ -697,9 +792,51 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Delete sharedcert gap file (test-shared-gap-crossdomain.pem)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/filestore/default/sharedcert/test-shared-gap-crossdomain.pem",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "filestore",
+                "default",
+                "sharedcert",
+                "test-shared-gap-crossdomain.pem"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete sharedcert gap file (test-shared-gap-orphan.pem)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/mgmt/filestore/default/sharedcert/test-shared-gap-orphan.pem",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "mgmt",
+                "filestore",
+                "default",
+                "sharedcert",
+                "test-shared-gap-orphan.pem"
+              ]
+            }
+          },
+          "response": []
         }
       ],
-      "description": "Tear down the test data when you're done. Run with 10 iterations. Test domains delete cascades to their per-domain cert files + crypto objects; appliance-wide pubcert/sharedcert files and the default-domain crypto objects (created by folder 4) need explicit deletes — included here."
+      "description": "Tear down the test data when you're done. Run with 10 iterations. Test domains delete cascades to their per-domain cert files + crypto objects (including the gap CryptoCertificate object in test-domain-01); appliance-wide pubcert/sharedcert files and the default-domain crypto objects (created by folders 4 and 4b) need explicit deletes — included here."
     }
   ],
   "auth": {
