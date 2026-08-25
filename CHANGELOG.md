@@ -17,7 +17,7 @@
 
   Net effect on a 235-domain appliance with 114 inaccessible domains: the
   breadcrumb summary drops from ~50 KB and 235+ step lines to ~1 KB and
-  ~10 step lines, well under Command's column cap.
+  ~10 step lines, well under Command's column cap. 
 
 ## 1.2.0
 
