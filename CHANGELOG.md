@@ -18,6 +18,21 @@
 * `DeleteCertificateRequest` hardcoded the `cert` folder in its filestore delete URL
   regardless of the actual store type, which would have misdirected sharedcert file
   deletes during a replace/remove.
+* **Inventory reported Success even when some certs silently failed to resolve.**
+  If a `CryptoCertificate` object's detail fetch/parse threw (e.g. a `.p12` that
+  can't be parsed as a bare `X509Certificate2`), `GetCerts` logged the error and
+  dropped that cert, but still returned `Success` with no indication anything was
+  skipped — visible only by comparing `ParseResponse`'s `certCount` against
+  `SubmitInventory`'s `itemCount` in the flow summary. `GetCerts` now returns
+  `Warning` with a message listing which cert(s) couldn't be retrieved whenever the
+  submitted item count is lower than the matched cert count.
+
+### Known follow-up (not yet fixed)
+* A raw `sharedcert:///` file with no `CryptoCertificate` config object at all is
+  still invisible to both Discovery and Inventory. Closing that gap requires reading
+  `sharedcert` at the filestore layer (like `pubcert`), including `.p12`/
+  `PasswordAlias` handling — a larger feature addition, tracked separately rather
+  than folded into this release.
 
 ### Changed
 * **sharedcert stores are now discovered and managed per-domain, like `cert`,

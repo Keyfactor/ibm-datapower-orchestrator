@@ -1234,6 +1234,15 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 
                 flow?.Step("GetCerts.ParseResponse",
                     $"certCount={cryptoCerts.Length} (filtered from {allCryptoCerts.Length} by scheme '{storeScheme}'), blacklistCount={blackList.Count}");
+
+                // Certs that throw during per-cert detail fetch/parse (e.g. a .p12 that
+                // ViewCertificateDetail can't resolve to a bare X509Certificate2) are
+                // logged and skipped rather than aborting the whole job - one bad cert
+                // shouldn't sink inventory of the rest. But silently returning Success
+                // when some certs were dropped hides that from operators watching only
+                // Command's job history. Track them so the result can be downgraded to
+                // Warning below.
+                var unresolvedCerts = new List<string>();
                 foreach (var cc in cryptoCerts)
                     if (cc != null && !string.IsNullOrEmpty(cc.Name))
                     {
@@ -1273,15 +1282,31 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                         }
                         catch (Exception ex)
                         {
+                            unresolvedCerts.Add(cc.Name);
                             _logger.LogError(
                                 $"Certificate not retrievable: Error on {cc.Name}: {LogHandler.FlattenException(ex)}");
                         }
                     }
 
                 _logger.LogTrace($"Submitting {inventoryItems.Count} inventory items");
-                flow?.Step("GetCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
+                flow?.Step("GetCerts.SubmitInventory",
+                    $"itemCount={inventoryItems.Count}, unresolvedCount={unresolvedCerts.Count}");
                 submitInventory.Invoke(inventoryItems);
                 _logger.LogTrace("Submitted Inventory Items.");
+
+                if (unresolvedCerts.Count > 0)
+                {
+                    var sample = string.Join(", ", unresolvedCerts.Take(10));
+                    var more = unresolvedCerts.Count - Math.Min(unresolvedCerts.Count, 10);
+                    var suffix = more > 0 ? $" (+{more} more)" : "";
+                    return new JobResult
+                    {
+                        Result = OrchestratorJobStatusJobResult.Warning,
+                        JobHistoryId = config.JobHistoryId,
+                        FailureMessage =
+                            $"{inventoryItems.Count} cert(s) inventoried, but {unresolvedCerts.Count} could not be retrieved/parsed and were skipped: {sample}{suffix}. Check the orchestrator log for the per-cert error (a common cause is a .p12 that the appliance's ViewCertificateDetail response can't be parsed as a bare X.509 cert)."
+                    };
+                }
 
                 return new JobResult
                 {
