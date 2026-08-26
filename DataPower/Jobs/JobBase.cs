@@ -54,6 +54,18 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
             return Resolver.Resolve(value);
         }
 
+        /// <summary>
+        /// Constructs the DataPower API client. Virtual purely as a unit-test seam - a
+        /// test subclass can override this to return a mock <see cref="IDataPowerClient"/>
+        /// instead of one that makes real HTTPS calls. Production code always gets the
+        /// real <see cref="DataPowerClient"/>.
+        /// </summary>
+        protected internal virtual IDataPowerClient CreateApiClient(string user, string pass, string baseUrl,
+            string domain)
+        {
+            return new DataPowerClient(user, pass, baseUrl, domain);
+        }
+
         protected static JobResult SuccessResult(long jobHistoryId, string message = "")
         {
             return new JobResult

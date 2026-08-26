@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Diagnostics.CodeAnalysis;
 using Newtonsoft.Json;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects
 {
     // One entry in the GET /mgmt/filestore/{domain} response. DataPower returns
     // these under filestore.location[] with names like "cert:" / "pubcert:" / "sharedcert:".
+    // Deserialized only inside DataPowerClient.ListFileStoreDirectories() (excluded
+    // from coverage - see DataPowerClient).
+    [ExcludeFromCodeCoverage]
     public class FileStoreLocation
     {
         [JsonProperty("name")] public string Name { get; set; }

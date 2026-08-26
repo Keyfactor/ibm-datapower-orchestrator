@@ -46,6 +46,12 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         private string ServerUserName { get; set; }
         private string ServerPassword { get; set; }
 
+        // Unit-test seam: production code never sets this, so every RequestManager
+        // constructs the real DataPowerClient. Tests substitute a factory that returns
+        // a mock IDataPowerClient instead of making real HTTPS calls.
+        public Func<string, string, string, string, IDataPowerClient> ClientFactory { get; set; } =
+            (user, pass, baseUrl, domain) => new DataPowerClient(user, pass, baseUrl, domain);
+
         // sharedcert files physically live in the default domain's filestore - DataPower
         // rejects filestore writes to sharedcert:// from any other domain context. The
         // CryptoCertificate/CryptoKey config *objects* that reference those files, though,
@@ -92,7 +98,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public bool DoesCryptoCertificateObjectExist(CertStoreInfo ci, string cryptoCertObjectName,
-            DataPowerClient apiClient)
+            IDataPowerClient apiClient)
         {
             var bUpdateCryptoCertificateObject = false;
             try
@@ -124,7 +130,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             return bUpdateCryptoCertificateObject;
         }
 
-        public void DisableCryptoCertificateObject(string cryptoCertObjectName, DataPowerClient apiClient)
+        public void DisableCryptoCertificateObject(string cryptoCertObjectName, IDataPowerClient apiClient)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Disable State for Crypto Certificate Object: {cryptoCertObjectName}");
@@ -155,7 +161,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public bool DoesCryptoKeyObjectExist(CertStoreInfo ci, string cryptoKeyObjectName, DataPowerClient apiClient)
+        public bool DoesCryptoKeyObjectExist(CertStoreInfo ci, string cryptoKeyObjectName, IDataPowerClient apiClient)
         {
             _logger.MethodEntry(LogLevel.Debug);
             var bUpdateCryptoKeyObject = false;
@@ -182,7 +188,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             return bUpdateCryptoKeyObject;
         }
 
-        public void DisableCryptoKeyObject(string cryptoKeyObjectName, DataPowerClient apiClient)
+        public void DisableCryptoKeyObject(string cryptoKeyObjectName, IDataPowerClient apiClient)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Disable State for Crypto Certificate Object: {cryptoKeyObjectName}");
@@ -212,7 +218,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public void UpdatePrivateKey(CertStoreInfo ci, string cryptoKeyObjectName,
-            DataPowerClient apiClient, string keyFileName, string alias)
+            IDataPowerClient apiClient, string keyFileName, string alias)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Updating Crypto Key Object: {cryptoKeyObjectName}");
@@ -238,7 +244,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public void AddCryptoKey(CertStoreInfo ci, string cryptoKeyObjectName, DataPowerClient apiClient,
+        public void AddCryptoKey(CertStoreInfo ci, string cryptoKeyObjectName, IDataPowerClient apiClient,
             string keyFileName,
             string alias)
         {
@@ -287,7 +293,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public CertificateAddRequest AddPrivateKey(CertStoreInfo ci, string alias, string keyFileName,
-            DataPowerClient apiClient,
+            IDataPowerClient apiClient,
             string privateKeyString, string fileDomain)
         {
             _logger.MethodEntry(LogLevel.Debug);
@@ -316,7 +322,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public void UpdateCryptoCert(CertStoreInfo ci, string cryptoCertObjectName,
-            DataPowerClient apiClient, string certFileName, string alias)
+            IDataPowerClient apiClient, string certFileName, string alias)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Updating Crypto Certificate Object: {cryptoCertObjectName}");
@@ -343,7 +349,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public void AddCryptoCert(CertStoreInfo ci, string cryptoCertObjectName, DataPowerClient apiClient,
+        public void AddCryptoCert(CertStoreInfo ci, string cryptoCertObjectName, IDataPowerClient apiClient,
             string certFileName,
             string alias)
         {
@@ -392,7 +398,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public CertificateAddRequest CertificateAddRequest(CertStoreInfo ci, string alias, string certFileName,
-            DataPowerClient apiClient, string certPem, string fileDomain)
+            IDataPowerClient apiClient, string certPem, string fileDomain)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Adding Certificate {alias} with Filename {certFileName} ");
@@ -446,7 +452,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             return bRemoveKeyFile;
         }
 
-        public bool DoesCertificateFileExist(CertStoreInfo ci, DataPowerClient apiClient,
+        public bool DoesCertificateFileExist(CertStoreInfo ci, IDataPowerClient apiClient,
             string certFileName, ViewPublicCertificatesResponse viewCertificateCollection)
         {
             _logger.MethodEntry(LogLevel.Debug);
@@ -549,7 +555,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 $"Entering AddPubCert for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
                 $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {addPubConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
+            var apiClient = ClientFactory(ServerUserName, ServerPassword,
                 $"{_protocol}://" + addPubConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("API Client Created");
 
@@ -635,7 +641,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 $"Entering RemoveCertStore for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
                 $"Creating API Client Created with user: {ServerUserName} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
+            var apiClient = ClientFactory(ServerUserName, ServerPassword,
                 $"{_protocol}://" + removeConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("API Client Created!");
 
@@ -724,7 +730,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 $"Entering RemoveFile for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
                 $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
+            var apiClient = ClientFactory(ServerUserName, ServerPassword,
                 $"{_protocol}://" + removeConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("Api Client Created!");
             try
@@ -844,7 +850,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 $"Entering AddCertStore for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
                 $"Creating API Client Created with user: {ServerUserName} protocol: {_protocol} ClientMachine: {addConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
+            var apiClient = ClientFactory(ServerUserName, ServerPassword,
                 $"{_protocol}://" + addConfig.CertificateStoreDetails.ClientMachine.Trim(),
                 ci.Domain);
             _logger.LogTrace("apiClient created!");
@@ -959,7 +965,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         private void ReplacePrivateKey(ManagementJobConfiguration addConfig, CertStoreInfo ci, string keyFileName,
-            ViewPublicCertificatesResponse viewCertificateCollection, string alias, DataPowerClient apiClient,
+            ViewPublicCertificatesResponse viewCertificateCollection, string alias, IDataPowerClient apiClient,
             string privateKeyString, string fileDomain)
         {
             _logger.MethodEntry(LogLevel.Debug);
@@ -991,7 +997,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         private void ReplaceCertificateFile(ManagementJobConfiguration addConfig, CertStoreInfo ci,
-            DataPowerClient apiClient,
+            IDataPowerClient apiClient,
             string certFileName, ViewPublicCertificatesResponse viewCertificateCollection, string alias,
             string certPem, string fileDomain)
         {
@@ -1020,7 +1026,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        private void ReplaceCryptoKeyObject(CertStoreInfo ci, string cryptoKeyObjectName, DataPowerClient apiClient,
+        private void ReplaceCryptoKeyObject(CertStoreInfo ci, string cryptoKeyObjectName, IDataPowerClient apiClient,
             string keyFileName,
             string alias)
         {
@@ -1061,7 +1067,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        private void ReplaceCryptoObject(CertStoreInfo ci, string cryptoCertObjectName, DataPowerClient apiClient,
+        private void ReplaceCryptoObject(CertStoreInfo ci, string cryptoCertObjectName, IDataPowerClient apiClient,
             string certFileName, string alias)
         {
             try
@@ -1104,7 +1110,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public JobResult GetPublicCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
+        public JobResult GetPublicCerts(InventoryJobConfiguration config, IDataPowerClient apiClient,
             SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
@@ -1198,7 +1204,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public JobResult GetCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
+        public JobResult GetCerts(InventoryJobConfiguration config, IDataPowerClient apiClient,
             SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try

@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Diagnostics.CodeAnalysis;
 using Newtonsoft.Json;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.Responses
 {
+    // Wire-format DTO deserialized only inside DataPowerClient.SaveConfig()
+    // (excluded from coverage - see DataPowerClient).
+    [ExcludeFromCodeCoverage]
     public class SaveConfigResponse
     {
         [JsonProperty("SaveConfig")] public string SaveConfig { get; set; }

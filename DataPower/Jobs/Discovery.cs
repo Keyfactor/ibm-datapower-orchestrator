@@ -171,10 +171,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                 var baseUrl = $"{protocol}://" + config.ClientMachine.Trim();
                 Logger.LogTrace($"Entering IBM DataPower: Discovery for appliance {config.ClientMachine}");
 
-                DataPowerClient apiClient = null;
+                IDataPowerClient apiClient = null;
                 flow.Step("CreateApiClient", () =>
                 {
-                    apiClient = new DataPowerClient(
+                    apiClient = CreateApiClient(
                         ResolvePamField("ServerUserName", config.ServerUsername),
                         ResolvePamField("ServerPassword", config.ServerPassword),
                         baseUrl,
@@ -324,7 +324,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
         // none (the common case on large appliances) get no store at all, so this
         // doesn't reintroduce the empty-store clutter that ruled out treating every
         // domain\sharedcert as discoverable via the filestore listing.
-        private void DiscoverSharedCertDomains(DataPowerClient apiClient, List<Models.SupportingObjects.DomainInfo> domains,
+        private void DiscoverSharedCertDomains(IDataPowerClient apiClient, List<Models.SupportingObjects.DomainInfo> domains,
             List<string> discoveredLocations, FlowLogger flow)
         {
             var sharedCertScheme = SharedCertStoreName + ":";
