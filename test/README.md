@@ -105,6 +105,78 @@ Folder 4b creates three `sharedcert` certs exercising the edges of the per-domai
 | `test-shared-gap-orphan` | A raw `sharedcert:///` file in `default` with no CryptoCertificate config object at all | Still invisible to both Discovery and Inventory, same as an orphan file would be for `cert`. This is expected, not a bug - sharedcert now follows the same "config objects are the source of truth" rule as cert, and DataPower itself has no domain to attribute an object-less file to. Confirms `default\sharedcert`'s Inventory count doesn't inflate to include it. |
 | `test-shared-gap-badp12` | A CryptoCertificate object in `default` pointing at a binary `.p12` file instead of a PEM | DataPower accepts the upload and the config object without complaint, but `GetCerts`' per-cert detail fetch can't parse a raw PKCS#12 blob as a bare X.509 cert. Inventory against `default\sharedcert` should report a **Warning** result (not silent Success) naming `test-shared-gap-badp12` as unresolved, alongside the 10 real certs from folder 4 that did resolve. |
 
+## Test Case Matrix
+
+The table below maps each functional behavior to the automated test(s) that prove it
+and, where applicable, what actually happened when it was exercised against a live
+appliance in this lab. "Automated" results come from `DataPower.Tests`
+(`dotnet test DataPower.Tests/DataPower.Tests.csproj` — 185 tests, all passing as of
+this writing) running against a mocked `IDataPowerClient`, so they verify the
+orchestrator's logic in isolation. "Live" results come from running the Postman
+collection folders in this directory against a real appliance (`20.84.52.84` in this
+lab) and, where noted, from actually triggering the job in Keyfactor Command.
+
+> **Reading the Actual Result column:** "Pass (unit)" means the behavior is verified
+> by a mocked unit test only — the underlying appliance data may be staged (via the
+> Postman folders above) but the Command job itself has not necessarily been
+> triggered end-to-end. "Pass (live via Command)" means an operator actually ran that
+> job through Command against the lab appliance and the result was observed directly,
+> not just tested against a mock.
+
+### Discovery
+
+| TC | Scenario | Expected Result | Verified By | Actual Result |
+|----|----------|------------------|-------------|----------------|
+| TC-D1 | `cert` discovered per domain | `<domain>\cert` emitted for every domain whose filestore lists a `cert:` directory | `DiscoveryTests.PerformDiscovery_EmitsPerDomainCertAndDefaultOnlyPubcert` | Pass (unit) |
+| TC-D2 | `pubcert` discovered under `default` only | `default\pubcert` emitted once; never `<non-default>\pubcert`, even if that domain's filestore listing also shows `pubcert:` | `DiscoveryTests.PerformDiscovery_PubcertInNonDefaultDomainFilestore_IsNotEmittedThere` | Pass (unit) |
+| TC-D3 | `sharedcert` discovered per owning domain | `<domain>\sharedcert` emitted only for domains that own a `CryptoCertificate` object referencing a `sharedcert://` file — not for every domain that can merely read the filestore | `DiscoveryTests.PerformDiscovery_SharedcertOnlyEmittedForDomainsOwningAMatchingCryptoCertificateObject` | **Pass (unit) and Pass (live via Command)** — after publishing folder 4b's `test-shared-gap-crossdomain` object into `test-domain-01`, a live Discovery run in Command listed 14 stores total, including `test-domain-01\sharedcert` alongside the 10 `{domain}\cert` stores, `default\cert`, `default\pubcert`, and `default\sharedcert` |
+| TC-D4 | Resilient to one domain's filestore listing failing | One domain throwing on `ListFileStoreDirectories` doesn't abort discovery of the rest; the failure is logged and grouped, not fatal | `DiscoveryTests.PerformDiscovery_OneDomainFailingFilestoreListing_DoesNotAbortDiscovery` | Pass (unit) |
+| TC-D5 | Resilient to one domain's sharedcert probe failing | Same resilience for the `CryptoCertificate`-ownership probe used for `sharedcert` | `DiscoveryTests.PerformDiscovery_OneDomainFailingSharedcertProbe_DoesNotAbortDiscovery` | Pass (unit) |
+| TC-D6 | Empty-named domain skipped | A domain entry with a null/empty `Name` is skipped in both the cert/pubcert pass and the sharedcert-ownership pass, without throwing | `DiscoveryTests.PerformDiscovery_EmptyNamedDomain_IsSkippedInBothCertAndSharedcertPasses` | Pass (unit) |
+| TC-D7 | Custom "Directories to search" honored | A `dirs` job property restricts Discovery to only the requested directory types (e.g. `cert` only skips the `sharedcert` CryptoCertificate probe entirely) | `DiscoveryTests.PerformDiscovery_UserDirsToSearch_RestrictsToRequestedDirectories` | Pass (unit) |
+| TC-D8 | Falls back to default dirs when property doesn't resolve | A job property dictionary that's present but has no usable `dirs` value falls back to the standard `cert,pubcert,sharedcert` set | `DiscoveryTests.PerformDiscovery_JobPropertiesPresentButNoDirsKeyMatches_FallsBackToDefaultDirs`, `PerformDiscovery_DirsKeyPresentButValueEmpty_FallsThroughToNextKeyThenDefault` | Pass (unit) |
+| TC-D9 | No domains returned | An appliance reporting zero domains submits an empty discovery list as `Success`, not a failure | `DiscoveryTests.PerformDiscovery_NoDomainsReturned_SubmitsEmptyListAsSuccess` | Pass (unit) |
+
+### Inventory
+
+| TC | Scenario | Expected Result | Verified By | Actual Result |
+|----|----------|------------------|-------------|----------------|
+| TC-I1 | Inventory `pubcert` | `default\pubcert` returns one `CurrentInventoryItem` per valid PEM in the filestore, routed through `GetPublicCerts` | `InventoryTests.ProcessJob_PubcertStorePath_RoutesToGetPublicCerts`, `RequestManagerGetCertsTests.GetPublicCerts_ReturnsSubmittedItemsForEachPubFile` | Pass (unit). Underlying data (10 pubcert PEMs) confirmed present on the live appliance via folder 7's `GET /mgmt/filestore/default/pubcert`; the Inventory job itself has not yet been triggered through Command in this session |
+| TC-I2 | Inventory `pubcert` respects page size | Only `InventoryPageSize` items are submitted even if more files exist | `RequestManagerGetCertsTests.GetPublicCerts_RespectsPageSizeLimit` | Pass (unit) |
+| TC-I3 | Inventory `sharedcert`, per-domain scoped | A `<domain>\sharedcert` store returns only the `CryptoCertificate` objects owned by that domain and matching the `sharedcert:` scheme, via `GetCerts` | `InventoryTests.ProcessJob_SharedcertStorePath_RoutesToGetCerts`, `RequestManagerGetCertsTests.GetCerts_ResolvedCert_IsSubmittedAsSuccess`, `GetCerts_FiltersByStoreScheme` | Pass (unit). Folder 7 confirms 10 matching `CryptoCertificate` objects exist in `default` on the live appliance; Inventory job not yet triggered through Command in this session |
+| TC-I4 | Inventory blacklist filtering | An alias listed in `InventoryBlackList` is excluded from submitted items | `RequestManagerGetCertsTests.GetCerts_BlacklistedAlias_IsExcludedFromSubmission` | Pass (unit) |
+| TC-I5 | Partial-failure surfaces as `Warning`, not silent `Success` | A cert that fails to resolve (e.g. a `.p12` `GetCerts` can't parse as a bare X.509 cert) downgrades the result to `Warning` and names the unresolved alias, instead of reporting `Success` with a silently-lower item count | `InventoryTests.ProcessJob_UnresolvedCertInGetCerts_ReturnsWarningWithFlowSummaryAppended` | Pass (unit). `test-shared-gap-badp12` is published on the live appliance (folder 4b) to reproduce this; the Inventory job has not yet been run through Command to observe the live `Warning` result |
+| TC-I6 | Appliance error surfaces as `Failure` with detail | A `DataPowerApiException` from the appliance propagates as a described `Failure`, not a generic message | `InventoryTests.ProcessJob_ApiExceptionFromClient_ReturnsFailureWithDescribedMessage` | Pass (unit) |
+| TC-I7 | Input validation | Null config, null submit delegate, missing `CertificateStoreDetails`, empty `ClientMachine`, empty `StorePath`, and unparsable `Properties` all fail fast with a clear `Failure` rather than throwing an unhandled exception | `InventoryTests.ProcessJob_NullConfig_ReturnsFailure` and 5 related tests | Pass (unit) |
+
+### Management (Add / Remove)
+
+| TC | Scenario | Expected Result | Verified By | Actual Result |
+|----|----------|------------------|-------------|----------------|
+| TC-M1 | Add/renew `sharedcert`, per-domain routing | The `sharedcert:///` file write always goes through `default` (appliance requirement), but the `CryptoCertificate`/`CryptoKey` config object is created/updated in the domain that store path names | `RequestManagerAddRemoveTests.Add_SharedcertPerDomainStore_RoutesFileWritesToDefaultAndConfigObjectsToOwningDomain` | Pass (unit) |
+| TC-M2 | Renewing an existing object updates in place | If a `CryptoCertificate`/`CryptoKey` object with the derived name already exists, Add disables + updates it rather than creating a duplicate | `RequestManagerAddRemoveTests.Add_ExistingCryptoCertificateObject_UpdatesInPlaceInsteadOfCreatingDuplicate`, `Add_EverythingAlreadyExists_ReplacesFilesAndUpdatesBothConfigObjects` | Pass (unit) |
+| TC-M3 | PFX (password-protected) content extracts correctly | A real PKCS#12 blob with `PrivateKeyPassword` set is parsed and the extracted cert PEM is what actually gets uploaded | `RequestManagerAddRemoveTests.Add_ValidPfxContents_ExtractsRealCertAndKeySuccessfully`, `RequestManagerAddPubCertTests.AddPubCert_PfxWithPassword_ExtractsCertificateAndSucceeds` | Pass (unit) |
+| TC-M4 | Add to `pubcert` on a non-default domain rejected | Rejected before any appliance call, with a clear message, since `pubcert` has no per-domain identity | `RequestManagerAddRemoveTests.Add_PubcertToNonDefaultDomain_IsRejectedBeforeAnyApiCall` | Pass (unit) |
+| TC-M5 | Appliance error is not swallowed | An appliance failure during Add propagates as `Failure` and does *not* call `SaveConfig` to persist partial state | `RequestManagerAddRemoveTests.Add_ApplianceReturnsError_PropagatesFailureInsteadOfSwallowingIt`, `Add_KeyFileUploadFails_PropagatesFailureAfterCertFileSucceeded` | Pass (unit) |
+| TC-M6 | Remove deletes both the config object and the file | Remove deletes the `CryptoCertificate`/`CryptoKey` object and the underlying file, routing the `sharedcert` file delete through `default` regardless of which domain owns the object | `RequestManagerAddRemoveTests.Remove_DeletesCryptoObjectAndFile_RoutingSharedcertFileDeleteThroughDefault`, `Remove_ExistingCryptoKey_IsDeletedAlongsideTheCertificate` | Pass (unit) |
+| TC-M7 | Remove of `pubcert` rejected | `pubcert` cannot be removed via this orchestrator | `RequestManagerAddRemoveTests.Remove_PublicCertStore_IsRejected` | Pass (unit) |
+| TC-M8 | Appliance-side failures during helper calls don't abort the job | Failures inside defensive existence-check/disable helpers (e.g. `ViewCertificates` throwing while checking if an object already exists) are logged and swallowed, not propagated as job failures | `RequestManagerHelperMethodTests` (11 tests), `RequestManagerAddRemoveTests.Remove_ViewCryptoCertificateThrows_IsSwallowedAndStillSavesConfig` | Pass (unit) |
+
+### Live Appliance Verification (Postman, this lab)
+
+These rows record what was actually observed running the Postman collection against
+the lab appliance (`20.84.52.84:5554`) in this session — distinct from the mocked
+unit tests above, which never make a real network call.
+
+| TC | Scenario | Expected Result | Actual Result |
+|----|----------|------------------|----------------|
+| TC-L1 | Populate baseline data (folders 1-3, 5-7) | 10 domains, 10 pubcert PEMs, 100 per-domain cert+key pairs with matching config objects all created and saved | **Pass** — all requests returned `200`/`201`; folder 7's Verify probes confirmed 10 domains, 20 files in `test-domain-01/cert`, 10 `CryptoCertificate`/`CryptoKey` objects in `test-domain-01`, 10 pubcert files |
+| TC-L2 | Populate `default/sharedcert` baseline (folder 4) | 10 unique cert+key pairs uploaded with matching `CryptoCertificate`/`CryptoKey` objects in `default` | **Pass** — all requests returned `200`/`201` |
+| TC-L3 | Populate sharedcert gap cases (folder 4b) | Cross-domain object created in `test-domain-01`; orphan file with no config object created in `default/sharedcert`; bad `.p12` file + config object created in `default` | **Pass** — cross-domain object returned `409` on a repeat run (already existed from a prior run — expected), orphan file and bad-`.p12` file/object returned `201` |
+| TC-L4 | Discovery reflects per-domain `sharedcert` | `test-domain-01\sharedcert` appears as its own store, distinct from `default\sharedcert` | **Pass (confirmed via Command UI)** — store list showed `Total: 14`, including `test-domain-01\sharedcert` |
+| TC-L5 | Inventory of `default\sharedcert` returns a `Warning` for the bad `.p12` | Inventory job reports `Warning`, naming `test-shared-gap-badp12` as unresolved | **Not yet run** — test data is staged (TC-L3), but the Inventory job has not been triggered through Command in this session to observe the result |
+| TC-L6 | Renewing `test-shared-gap-crossdomain` updates `test-domain-01`, not `default` | Management Add updates the existing object in `test-domain-01` in place | **Not yet run** — covered by unit test TC-M2/TC-M1 only; not yet exercised via a live Command renewal job |
+
 ## Cleanup
 
 To remove the test data when you're done, run the **Cleanup (optional)** folder with 10 iterations. This deletes the 10 test domains and the 20 appliance-wide cert files (pubcert + sharedcert). Files inside `{domain}/cert` are removed automatically when the domain is deleted.
