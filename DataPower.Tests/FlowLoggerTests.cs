@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Keyfactor.Extensions.Orchestrator.DataPower;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -7,6 +8,31 @@ namespace DataPower.Tests
     public class FlowLoggerTests
     {
         private static FlowLogger NewLogger() => new FlowLogger(NullLogger.Instance, "Test-Flow");
+
+        [Fact]
+        public async Task StepAsync_RunsActionAndRecordsSuccess()
+        {
+            using var flow = NewLogger();
+            var ran = false;
+            await flow.StepAsync("AsyncStep", async () =>
+            {
+                await Task.Yield();
+                ran = true;
+            }, "detail");
+
+            Assert.True(ran);
+            Assert.False(flow.HasFailures);
+        }
+
+        [Fact]
+        public async Task StepAsync_ThrowingAction_RecordsFailureAndRethrows()
+        {
+            using var flow = NewLogger();
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                flow.StepAsync("AsyncBoom", () => throw new InvalidOperationException("async kaboom")));
+
+            Assert.True(flow.HasFailures);
+        }
 
         [Fact]
         public void Step_WithoutAction_RecordsSuccess()

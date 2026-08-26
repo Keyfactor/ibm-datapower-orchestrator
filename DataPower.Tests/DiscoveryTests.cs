@@ -215,5 +215,180 @@ namespace DataPower.Tests
             Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
             Assert.Empty(submitted);
         }
+
+        [Fact]
+        public void ExtensionName_IsDataPower()
+        {
+            var (discovery, _, _) = NewDiscovery();
+            Assert.Equal("DataPower", discovery.ExtensionName);
+        }
+
+        [Fact]
+        public void PerformDiscovery_ProtocolJobProperty_OverridesHttps()
+        {
+            var (discovery, client, submitted) = NewDiscovery();
+            client.Setup(c => c.ListDomains()).Returns(new List<DomainInfo>());
+
+            var config = NewConfig(new Dictionary<string, object> { ["Protocol"] = "http" });
+            discovery.ApiClientFactory = (_, _, baseUrl, _) =>
+            {
+                Assert.StartsWith("http://", baseUrl);
+                return client.Object;
+            };
+
+            var result = discovery.ProcessJob(config, items =>
+            {
+                submitted.AddRange(items);
+                return true;
+            });
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+        }
+
+        [Fact]
+        public void PerformDiscovery_JobPropertiesPresentButNoDirsKeyMatches_FallsBackToDefaultDirs()
+        {
+            var (discovery, client, submitted) = NewDiscovery();
+            client.Setup(c => c.ListDomains()).Returns(new List<DomainInfo> { Domain("default") });
+            client.Setup(c => c.ListFileStoreDirectories("default"))
+                .Returns(new List<string> { "cert:", "pubcert:" });
+
+            // JobProperties is non-null but has nothing under any recognized "dirs" key.
+            var config = NewConfig(new Dictionary<string, object> { ["SomeOtherProperty"] = "value" });
+
+            var result = discovery.ProcessJob(config, items =>
+            {
+                submitted.AddRange(items);
+                return true;
+            });
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            Assert.Contains(@"default\cert", submitted);
+            Assert.Contains(@"default\pubcert", submitted);
+        }
+
+        [Fact]
+        public void PerformDiscovery_EmptyNamedDomain_IsSkippedInBothCertAndSharedcertPasses()
+        {
+            var (discovery, client, submitted) = NewDiscovery();
+            client.Setup(c => c.ListDomains()).Returns(new List<DomainInfo>
+            {
+                Domain("default"), new DomainInfo { Name = "" }
+            });
+            client.Setup(c => c.ListFileStoreDirectories("default")).Returns(new List<string> { "cert:", "sharedcert:" });
+            client.Setup(c => c.ViewCertificates(It.IsAny<ViewCryptoCertificatesRequest>()))
+                .Returns(new ViewCryptoCertificatesResponse
+                {
+                    CryptoCertificates = new[] { CertRefFile("sharedcert:///a.pem") }
+                });
+
+            var result = discovery.ProcessJob(NewConfig(), items =>
+            {
+                submitted.AddRange(items);
+                return true;
+            });
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            Assert.Contains(@"default\cert", submitted);
+            Assert.Contains(@"default\sharedcert", submitted);
+            // No exception, no bogus "\cert" or "\sharedcert" entry for the empty-named domain.
+            Assert.DoesNotContain(submitted, s => s.StartsWith(@"\"));
+        }
+
+        [Fact]
+        public void PerformDiscovery_PubcertInNonDefaultDomainFilestore_IsNotEmittedThere()
+        {
+            var (discovery, client, submitted) = NewDiscovery();
+            client.Setup(c => c.ListDomains()).Returns(new List<DomainInfo> { Domain("default"), Domain("test-domain-01") });
+            // Every domain's filestore listing can show pubcert: (appliance-wide), even
+            // though only default actually owns it.
+            client.Setup(c => c.ListFileStoreDirectories(It.IsAny<string>()))
+                .Returns(new List<string> { "cert:", "pubcert:" });
+
+            var result = discovery.ProcessJob(NewConfig(), items =>
+            {
+                submitted.AddRange(items);
+                return true;
+            });
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            Assert.Contains(@"default\pubcert", submitted);
+            Assert.DoesNotContain(@"test-domain-01\pubcert", submitted);
+        }
+
+        [Fact]
+        public void PerformDiscovery_ListDomainsThrows_ReturnsFailure()
+        {
+            var (discovery, client, _) = NewDiscovery();
+            client.Setup(c => c.ListDomains()).Throws(new InvalidOperationException("appliance unreachable"));
+
+            var result = discovery.ProcessJob(NewConfig(), items => true);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+            Assert.Contains("appliance unreachable", result.FailureMessage);
+        }
+
+        [Fact]
+        public void PerformDiscovery_DomainFailureWithMatchingApiErrorBody_GroupsBySignature()
+        {
+            var (discovery, client, submitted) = NewDiscovery();
+            client.Setup(c => c.ListDomains()).Returns(new List<DomainInfo> { Domain("broken-domain") });
+            client.Setup(c => c.ListFileStoreDirectories("broken-domain"))
+                .Throws(new DataPowerApiException("forbidden", System.Net.HttpStatusCode.Forbidden,
+                    "ListFileStoreDirectories", "{\"error\": [\"RBAC: access denied\"]}"));
+
+            var result = discovery.ProcessJob(NewConfig(), items =>
+            {
+                submitted.AddRange(items);
+                return true;
+            });
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            Assert.Empty(submitted);
+        }
+
+        [Fact]
+        public void PerformDiscovery_DomainFailureWithNonMatchingApiErrorBody_FallsBackToPlainStatusSignature()
+        {
+            var (discovery, client, submitted) = NewDiscovery();
+            client.Setup(c => c.ListDomains()).Returns(new List<DomainInfo> { Domain("broken-domain") });
+            // Body doesn't match the `"error": [...]` regex shape - ErrorSignatureOf
+            // should fall back to the plain "HTTP {code} {status}" signature instead.
+            client.Setup(c => c.ListFileStoreDirectories("broken-domain"))
+                .Throws(new DataPowerApiException("forbidden", System.Net.HttpStatusCode.Forbidden,
+                    "ListFileStoreDirectories", "not json at all"));
+
+            var result = discovery.ProcessJob(NewConfig(), items =>
+            {
+                submitted.AddRange(items);
+                return true;
+            });
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            Assert.Empty(submitted);
+        }
+
+        [Fact]
+        public void PerformDiscovery_DirsKeyPresentButValueEmpty_FallsThroughToNextKeyThenDefault()
+        {
+            var (discovery, client, submitted) = NewDiscovery();
+            client.Setup(c => c.ListDomains()).Returns(new List<DomainInfo> { Domain("default") });
+            client.Setup(c => c.ListFileStoreDirectories("default"))
+                .Returns(new List<string> { "cert:", "pubcert:" });
+
+            // "dirs" key is present but splits down to nothing usable - should fall
+            // through (not treat it as a match) all the way to the default dir set.
+            var config = NewConfig(new Dictionary<string, object> { ["dirs"] = ",,," });
+
+            var result = discovery.ProcessJob(config, items =>
+            {
+                submitted.AddRange(items);
+                return true;
+            });
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            Assert.Contains(@"default\cert", submitted);
+            Assert.Contains(@"default\pubcert", submitted);
+        }
     }
 }

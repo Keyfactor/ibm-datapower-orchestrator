@@ -226,5 +226,253 @@ namespace DataPower.Tests
 
             Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
         }
+
+        [Fact]
+        public void Remove_ExistingCryptoKey_IsDeletedAlongsideTheCertificate()
+        {
+            var (rm, client) = NewRequestManager("test-domain-01");
+
+            client.Setup(c => c.ViewCryptoCertificate(It.IsAny<ViewCryptoCertificatesRequest>()))
+                .Returns(new ViewCryptoCertificateSingleResponse
+                {
+                    CryptoCertificate = new CryptoCertificate { Name = "mycert", CertFile = "sharedcert:///mycert.cer" }
+                });
+            client.Setup(c => c.ViewCryptoKeys(It.IsAny<ViewCryptoKeysRequest>()))
+                .Returns(new ViewCryptoKeysResponse
+                {
+                    CryptoKeys = new[] { new CryptoKey { Name = "mycert", CertFile = "sharedcert:///mycert.pem" } }
+                });
+            client.Setup(c => c.SaveConfig()).Returns(true);
+
+            var ci = new CertStoreInfo { Domain = "test-domain-01", CertificateStore = "sharedcert", PublicCertStoreName = "pubcert" };
+            var config = new ManagementJobConfiguration
+            {
+                JobHistoryId = 3,
+                OperationType = CertStoreOperationType.Remove,
+                CertificateStoreDetails = new CertificateStore
+                {
+                    ClientMachine = "dp.example.com:5554",
+                    StorePath = @"test-domain-01\sharedcert"
+                },
+                JobCertificate = new ManagementJobCertificate { Alias = "mycert" }
+            };
+
+            var result = rm.Remove(config, ci, new NamePrefix());
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            client.Verify(c => c.DeleteCryptoKey(It.IsAny<DeleteCryptoKeyRequest>()), Times.Once);
+            client.Verify(c => c.DeleteCertificate(It.IsAny<DeleteCertificateRequest>()), Times.Exactly(2));
+        }
+
+        [Fact]
+        public void Add_EverythingAlreadyExists_ReplacesFilesAndUpdatesBothConfigObjects()
+        {
+            var (rm, client) = NewRequestManager("test-domain-01");
+
+            // Existing cert + key files under the derived filenames (mycert.cer / mycert.pem).
+            client.Setup(c => c.ViewPublicCertificates(It.IsAny<ViewPublicCertificatesRequest>()))
+                .Returns(new ViewPublicCertificatesResponse
+                {
+                    PubFileStoreLocation = new PublicFileStoreLocation
+                    {
+                        PubFileStore = new PublicFileStore
+                        {
+                            PubFiles = new[]
+                            {
+                                new PublicFile { Name = "mycert.cer" },
+                                new PublicFile { Name = "mycert.pem" }
+                            }
+                        }
+                    }
+                });
+            // Existing CryptoCertificate and CryptoKey objects matching the alias.
+            client.Setup(c => c.ViewCertificates(It.IsAny<ViewCryptoCertificatesRequest>()))
+                .Returns(new ViewCryptoCertificatesResponse
+                {
+                    CryptoCertificates = new[] { new CryptoCertificate { Name = "mycert" } }
+                });
+            client.Setup(c => c.ViewCryptoKeys(It.IsAny<ViewCryptoKeysRequest>()))
+                .Returns(new ViewCryptoKeysResponse
+                {
+                    CryptoKeys = new[] { new CryptoKey { Name = "mycert" } }
+                });
+            client.Setup(c => c.AddCertificateFile(It.IsAny<CertificateAddRequest>())).Returns(true);
+            client.Setup(c => c.DeleteCertificate(It.IsAny<DeleteCertificateRequest>()));
+            client.Setup(c => c.SaveConfig()).Returns(true);
+
+            var ci = new CertStoreInfo { Domain = "test-domain-01", CertificateStore = "sharedcert", PublicCertStoreName = "pubcert" };
+            var config = NewAddConfig(@"test-domain-01\sharedcert", "mycert");
+
+            var result = rm.Add(config, ci, new NamePrefix());
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            // Old cert file + old key file each get deleted (via RemoveFile) before re-add.
+            client.Verify(c => c.DeleteCertificate(It.IsAny<DeleteCertificateRequest>()), Times.Exactly(2));
+            // Both config objects get disabled+updated (2 calls each) rather than added fresh.
+            client.Verify(c => c.UpdateCryptoCertificate(It.IsAny<CryptoCertificateUpdateRequest>()), Times.Exactly(2));
+            client.Verify(c => c.UpdateCryptoKey(It.IsAny<CryptoKeyUpdateRequest>()), Times.Exactly(2));
+            client.Verify(c => c.AddCryptoCertificate(It.IsAny<CryptoCertificateAddRequest>()), Times.Never);
+            client.Verify(c => c.AddCryptoKey(It.IsAny<CryptoKeyAddRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public void Add_ValidPfxContents_ExtractsRealCertAndKeySuccessfully()
+        {
+            var (rm, client) = NewRequestManager("default");
+            SetupEmptyExistenceChecks(client);
+
+            string? certPemSubmitted = null;
+            client.Setup(c => c.AddCertificateFile(It.IsAny<CertificateAddRequest>()))
+                .Callback<CertificateAddRequest>(r =>
+                {
+                    if (r.Filename.EndsWith(".cer")) certPemSubmitted = r.Certificate.Content;
+                })
+                .Returns(true);
+            client.Setup(c => c.SaveConfig()).Returns(true);
+
+            var ci = new CertStoreInfo { Domain = "default", CertificateStore = "sharedcert", PublicCertStoreName = "pubcert" };
+            var config = new ManagementJobConfiguration
+            {
+                JobHistoryId = 9,
+                OperationType = CertStoreOperationType.Add,
+                CertificateStoreDetails = new CertificateStore
+                {
+                    ClientMachine = "dp.example.com:5554",
+                    StorePath = @"default\sharedcert"
+                },
+                JobCertificate = new ManagementJobCertificate
+                {
+                    Alias = "mycert",
+                    PrivateKeyPassword = "test1234",
+                    Contents = RequestManagerAddPubCertTests.ValidPfxBase64
+                }
+            };
+
+            var result = rm.Add(config, ci, new NamePrefix());
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            // Utility.Pemify just line-wraps the base64 (no BEGIN/END armor) - confirm the
+            // PKCS12 parse actually extracted real certificate bytes, not an empty/garbage string.
+            Assert.NotNull(certPemSubmitted);
+            Assert.True(certPemSubmitted!.Length > 100);
+        }
+
+        [Fact]
+        public void Add_EmptyAlias_StillSucceedsWithGeneratedName()
+        {
+            var (rm, client) = NewRequestManager("default");
+            SetupEmptyExistenceChecks(client);
+            client.Setup(c => c.AddCertificateFile(It.IsAny<CertificateAddRequest>())).Returns(true);
+            client.Setup(c => c.SaveConfig()).Returns(true);
+
+            var ci = new CertStoreInfo { Domain = "default", CertificateStore = "sharedcert", PublicCertStoreName = "pubcert" };
+            var config = NewAddConfig(@"default\sharedcert", "");
+
+            var result = rm.Add(config, ci, new NamePrefix());
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+        }
+
+        [Fact]
+        public void Add_NullStorePath_OuterCatchRethrows()
+        {
+            var (rm, _) = NewRequestManager("default");
+            var ci = new CertStoreInfo { Domain = "default", CertificateStore = "sharedcert", PublicCertStoreName = "pubcert" };
+            var config = NewAddConfig(@"default\sharedcert", "mycert");
+            config.CertificateStoreDetails.StorePath = null!;
+
+            Assert.ThrowsAny<Exception>(() => rm.Add(config, ci, new NamePrefix()));
+        }
+
+        [Fact]
+        public void Remove_NullStorePath_OuterCatchRethrows()
+        {
+            var (rm, _) = NewRequestManager("default");
+            var ci = new CertStoreInfo { Domain = "default", CertificateStore = "sharedcert", PublicCertStoreName = "pubcert" };
+            var config = new ManagementJobConfiguration
+            {
+                JobHistoryId = 3,
+                OperationType = CertStoreOperationType.Remove,
+                CertificateStoreDetails = new CertificateStore
+                {
+                    ClientMachine = "dp.example.com:5554",
+                    StorePath = null
+                },
+                JobCertificate = new ManagementJobCertificate { Alias = "mycert" }
+            };
+
+            Assert.ThrowsAny<Exception>(() => rm.Remove(config, ci, new NamePrefix()));
+        }
+
+        [Fact]
+        public void Remove_ViewCryptoCertificateThrows_IsSwallowedAndStillSavesConfig()
+        {
+            var (rm, client) = NewRequestManager("test-domain-01");
+            client.Setup(c => c.ViewCryptoCertificate(It.IsAny<ViewCryptoCertificatesRequest>()))
+                .Throws(new InvalidOperationException("appliance error"));
+            client.Setup(c => c.SaveConfig()).Returns(true);
+
+            var ci = new CertStoreInfo { Domain = "test-domain-01", CertificateStore = "sharedcert", PublicCertStoreName = "pubcert" };
+            var config = new ManagementJobConfiguration
+            {
+                JobHistoryId = 3,
+                OperationType = CertStoreOperationType.Remove,
+                CertificateStoreDetails = new CertificateStore
+                {
+                    ClientMachine = "dp.example.com:5554",
+                    StorePath = @"test-domain-01\sharedcert"
+                },
+                JobCertificate = new ManagementJobCertificate { Alias = "mycert" }
+            };
+
+            // RemoveCertFromDomain's own catch swallows this rather than failing the
+            // whole job - one inaccessible/erroring domain lookup shouldn't block Remove.
+            var result = rm.Remove(config, ci, new NamePrefix());
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            client.Verify(c => c.SaveConfig(), Times.Once);
+        }
+
+        [Fact]
+        public void Add_ValidDefaultPubcertPath_RoutesThroughAddPubCert()
+        {
+            var (rm, client) = NewRequestManager("default");
+            client.Setup(c => c.AddCertificateFile(It.IsAny<CertificateAddRequest>())).Returns(true);
+            client.Setup(c => c.SaveConfig()).Returns(true);
+
+            var ci = new CertStoreInfo { Domain = "default", CertificateStore = "pubcert", PublicCertStoreName = "pubcert" };
+            var config = NewAddConfig(@"default\pubcert", "mypub");
+            config.JobCertificate.PrivateKeyPassword = "";
+
+            var result = rm.Add(config, ci, new NamePrefix());
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            client.Verify(c => c.AddCertificateFile(It.Is<CertificateAddRequest>(r => r.Filename == "mypub.pem")),
+                Times.Once);
+        }
+
+        [Fact]
+        public void Add_KeyFileUploadFails_PropagatesFailureAfterCertFileSucceeded()
+        {
+            var (rm, client) = NewRequestManager("default");
+            SetupEmptyExistenceChecks(client);
+
+            // Cert file (.cer) succeeds; key file (.pem) fails - exercises
+            // ReplacePrivateKey's own catch/rethrow specifically, distinct from
+            // ReplaceCertificateFile's (which the AddCertificateFile-always-throws
+            // test already covers).
+            client.Setup(c => c.AddCertificateFile(It.Is<CertificateAddRequest>(r => r.Filename.EndsWith(".cer"))))
+                .Returns(true);
+            client.Setup(c => c.AddCertificateFile(It.Is<CertificateAddRequest>(r => r.Filename.EndsWith(".pem"))))
+                .Throws(new InvalidOperationException("key upload failed"));
+
+            var ci = new CertStoreInfo { Domain = "default", CertificateStore = "sharedcert", PublicCertStoreName = "pubcert" };
+            var config = NewAddConfig(@"default\sharedcert", "mycert");
+
+            var result = rm.Add(config, ci, new NamePrefix());
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+            Assert.Contains("key upload failed", result.FailureMessage);
+        }
     }
 }

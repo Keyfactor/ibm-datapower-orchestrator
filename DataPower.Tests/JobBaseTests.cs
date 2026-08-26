@@ -127,6 +127,25 @@ namespace DataPower.Tests
         }
 
         [Fact]
+        public void DescribeException_AggregateExceptionWithoutApiException_UsesFirstInnerMessage()
+        {
+            var agg = new AggregateException(new InvalidOperationException("first"), new Exception("second"));
+            Assert.Equal("first", TestableJobBase.PublicDescribeException(agg));
+        }
+
+        [Fact]
+        public void DescribeException_TruncatesLongResponseBody()
+        {
+            var longBody = new string('x', 600);
+            var apiEx = new DataPowerApiException("bad", HttpStatusCode.BadRequest, "AddCryptoCertificate", longBody);
+
+            var described = TestableJobBase.PublicDescribeException(apiEx);
+
+            Assert.Contains("...", described);
+            Assert.DoesNotContain(new string('x', 600), described);
+        }
+
+        [Fact]
         public void CreateApiClient_DefaultsToRealDataPowerClient()
         {
             var job = NewJob();

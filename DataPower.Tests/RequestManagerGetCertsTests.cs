@@ -226,5 +226,47 @@ namespace DataPower.Tests
 
             Assert.Single(submitted);
         }
+
+        [Fact]
+        public void GetPublicCerts_PerFileFetchThrows_IsSwallowedAndOthersStillProcessed()
+        {
+            var client = NewMockClient("default");
+            client.Setup(c => c.ViewPublicCertificates(It.IsAny<ViewPublicCertificatesRequest>()))
+                .Returns(new ViewPublicCertificatesResponse
+                {
+                    PubFileStoreLocation = new PublicFileStoreLocation
+                    {
+                        PubFileStore = new PublicFileStore { PubFiles = new[] { new PublicFile { Name = "bad.pem" } } }
+                    }
+                });
+            client.Setup(c => c.ViewPublicCertificate(It.IsAny<ViewPubCertificateDetailRequest>()))
+                .Throws(new InvalidOperationException("appliance error"));
+
+            var submitted = new List<CurrentInventoryItem>();
+            var ci = new CertStoreInfo { Domain = "default", CertificateStore = "pubcert", InventoryPageSize = 100 };
+            var config = new InventoryJobConfiguration { JobHistoryId = 1 };
+            var rm = NewRequestManager();
+
+            var result = rm.GetPublicCerts(config, client.Object,
+                items => { submitted.AddRange(items); return true; }, ci);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
+            Assert.Empty(submitted);
+        }
+
+        [Fact]
+        public void GetPublicCerts_ViewPublicCertificatesThrows_PropagatesFailure()
+        {
+            var client = NewMockClient("default");
+            client.Setup(c => c.ViewPublicCertificates(It.IsAny<ViewPublicCertificatesRequest>()))
+                .Throws(new InvalidOperationException("appliance unreachable"));
+
+            var ci = new CertStoreInfo { Domain = "default", CertificateStore = "pubcert", InventoryPageSize = 100 };
+            var config = new InventoryJobConfiguration { JobHistoryId = 1 };
+            var rm = NewRequestManager();
+
+            Assert.Throws<InvalidOperationException>(() =>
+                rm.GetPublicCerts(config, client.Object, items => true, ci));
+        }
     }
 }

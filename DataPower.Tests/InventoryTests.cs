@@ -128,5 +128,48 @@ namespace DataPower.Tests
             Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
             Assert.Contains("403", result.FailureMessage);
         }
+
+        [Fact]
+        public void ExtensionName_IsDataPower()
+        {
+            var (job, _) = NewInventory();
+            Assert.Equal("DataPower", job.ExtensionName);
+        }
+
+        [Fact]
+        public void ProcessJob_NullCertificateStoreDetails_ReturnsFailure()
+        {
+            var (job, _) = NewInventory();
+            var config = new InventoryJobConfiguration { JobHistoryId = 5, CertificateStoreDetails = null };
+
+            var result = job.ProcessJob(config, items => true);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+        }
+
+        [Fact]
+        public void ProcessJob_EmptyClientMachine_ReturnsFailure()
+        {
+            var (job, _) = NewInventory();
+            var config = NewConfig(@"default\sharedcert");
+            config.CertificateStoreDetails.ClientMachine = "";
+
+            var result = job.ProcessJob(config, items => true);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+        }
+
+        [Fact]
+        public void ProcessJob_PropertiesDeserializeToNull_ReturnsFailure()
+        {
+            var (job, _) = NewInventory();
+            var config = NewConfig(@"default\sharedcert");
+            config.CertificateStoreDetails.Properties = "null";
+
+            var result = job.ProcessJob(config, items => true);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+            Assert.Contains("Failed to parse certificate store configuration", result.FailureMessage);
+        }
     }
 }

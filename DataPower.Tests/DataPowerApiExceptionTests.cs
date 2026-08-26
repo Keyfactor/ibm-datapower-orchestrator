@@ -58,5 +58,24 @@ namespace DataPower.Tests
             Assert.Equal("body text", ex.ResponseBody);
             Assert.Equal("msg", ex.Message);
         }
+
+        [Fact]
+        public void Constructor_WithInnerException_SetsPropertiesAndInnerException()
+        {
+            var inner = new InvalidOperationException("root cause");
+            var ex = new DataPowerApiException("msg", HttpStatusCode.BadGateway, "ListDomains", "body", inner);
+
+            Assert.Equal(HttpStatusCode.BadGateway, ex.StatusCode);
+            Assert.Equal("ListDomains", ex.Operation);
+            Assert.Equal("body", ex.ResponseBody);
+            Assert.Same(inner, ex.InnerException);
+        }
+
+        [Fact]
+        public void Find_AggregateExceptionWithNoDataPowerApiExceptionInside_ReturnsNull()
+        {
+            var agg = new AggregateException(new Exception("a"), new Exception("b"));
+            Assert.Null(DataPowerApiException.Find(agg));
+        }
     }
 }

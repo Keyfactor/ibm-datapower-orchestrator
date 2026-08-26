@@ -112,5 +112,63 @@ namespace DataPower.Tests
 
             Assert.Equal(OrchestratorJobStatusJobResult.Success, result.Result);
         }
+
+        [Fact]
+        public void ExtensionName_IsDataPower()
+        {
+            var (job, _) = NewManagement();
+            Assert.Equal("DataPower", job.ExtensionName);
+        }
+
+        [Fact]
+        public void ProcessJob_NullCertificateStoreDetails_ReturnsFailure()
+        {
+            var (job, _) = NewManagement();
+            var config = new ManagementJobConfiguration { JobHistoryId = 11, CertificateStoreDetails = null };
+
+            var result = job.ProcessJob(config);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+        }
+
+        [Fact]
+        public void ProcessJob_MissingStorePath_ReturnsFailure()
+        {
+            var (job, _) = NewManagement();
+            var config = NewConfig(CertStoreOperationType.Add, "");
+
+            var result = job.ProcessJob(config);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+        }
+
+        [Fact]
+        public void ProcessJob_PropertiesDeserializeToNull_ReturnsFailure()
+        {
+            var (job, _) = NewManagement();
+            var config = NewConfig(CertStoreOperationType.Add, @"default\sharedcert");
+            config.CertificateStoreDetails.Properties = "null";
+
+            var result = job.ProcessJob(config);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+            Assert.Contains("Failed to parse certificate store configuration", result.FailureMessage);
+        }
+
+        [Fact]
+        public void ProcessJob_AddReturnsNonSuccessResultWithoutThrowing_PropagatesFailure()
+        {
+            // pubcert Add against a non-default domain is rejected by RequestManager.Add
+            // with a Failure JobResult rather than an exception - exercises the
+            // "result != null but not Success" branch distinct from the catch block.
+            var (job, _) = NewManagement();
+            var config = NewConfig(CertStoreOperationType.Add, @"test-domain-01\pubcert");
+
+            var result = job.ProcessJob(config);
+
+            Assert.Equal(OrchestratorJobStatusJobResult.Failure, result.Result);
+            Assert.Contains("pubcert on the default domain", result.FailureMessage);
+            Assert.Contains("Flow: Management-ProcessJob", result.FailureMessage);
+        }
     }
 }
