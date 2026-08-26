@@ -1,23 +1,20 @@
-﻿// Copyright 2023 Keyfactor
-// 
+// Copyright 2026 Keyfactor
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Newtonsoft.Json;
+using System.Runtime.CompilerServices;
 
-namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects
-{
-    public class CertStoreCustom
-    {
-        [JsonProperty("Domain")] public string Domain1 { get; set; }
-    }
-}
+// Lets the unit test project call internal members (e.g. Utility, which is
+// intentionally not part of this extension's public surface) without making them
+// public just for testability.
+[assembly: InternalsVisibleTo("DataPower.Tests")]

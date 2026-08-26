@@ -24,12 +24,15 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
 {
     public class Management : JobBase, IManagementJobExtension
     {
-        private readonly RequestManager _certManager;
+        // Exposed as protected internal (rather than a private field) purely as a
+        // unit-test seam - a test subclass can reach in and swap CertManager.ClientFactory
+        // for a mock IDataPowerClient factory. Production code never touches this.
+        protected internal RequestManager CertManager { get; }
 
         public Management(IPAMSecretResolver resolver) : base(resolver)
         {
             Logger = LogHandler.GetClassLogger<Management>();
-            _certManager = new RequestManager(resolver);
+            CertManager = new RequestManager(resolver);
         }
 
         public string ExtensionName => "DataPower";
@@ -85,10 +88,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                         switch (operation)
                         {
                             case "Add":
-                                result = flow.Step<JobResult>("Add", () => _certManager.Add(config, ci, np));
+                                result = flow.Step<JobResult>("Add", () => CertManager.Add(config, ci, np));
                                 break;
                             case "Remove":
-                                result = flow.Step<JobResult>("Remove", () => _certManager.Remove(config, ci, np));
+                                result = flow.Step<JobResult>("Remove", () => CertManager.Remove(config, ci, np));
                                 break;
                             default:
                                 flow.Fail("OperationType", $"Unrecognized operation '{operation}'");

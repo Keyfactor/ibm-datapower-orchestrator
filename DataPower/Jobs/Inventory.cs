@@ -24,13 +24,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
 {
     public class Inventory : JobBase, IInventoryJobExtension
     {
-        private readonly RequestManager _reqManager;
+        // protected internal purely as a unit-test seam - see Management.CertManager.
+        protected internal RequestManager ReqManager { get; }
         private string _protocol;
 
         public Inventory(IPAMSecretResolver resolver) : base(resolver)
         {
             Logger = LogHandler.GetClassLogger<Inventory>();
-            _reqManager = new RequestManager(resolver);
+            ReqManager = new RequestManager(resolver);
         }
 
         public string ExtensionName => "DataPower";
@@ -96,10 +97,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
 
                 Logger.LogTrace($"Certificate Config Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
 
-                DataPowerClient apiClient = null;
+                IDataPowerClient apiClient = null;
                 flow.Step("CreateApiClient", () =>
                 {
-                    apiClient = new DataPowerClient(
+                    apiClient = CreateApiClient(
                         ResolvePamField("ServerUserName", config.ServerUsername),
                         ResolvePamField("ServerPassword", config.ServerPassword),
                         $"{_protocol}://" + config.CertificateStoreDetails.ClientMachine.Trim(),
@@ -113,8 +114,8 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower.Jobs
                 var inventoryResult = flow.Step<JobResult>(
                     storePath.Contains(publicCertStoreName) ? "GetPublicCerts" : "GetCerts",
                     () => storePath.Contains(publicCertStoreName)
-                        ? _reqManager.GetPublicCerts(config, apiClient, submitInventory, ci, flow)
-                        : _reqManager.GetCerts(config, apiClient, submitInventory, ci, flow));
+                        ? ReqManager.GetPublicCerts(config, apiClient, submitInventory, ci, flow)
+                        : ReqManager.GetCerts(config, apiClient, submitInventory, ci, flow));
 
                 flow.Step("Result", $"{inventoryResult.Result}");
 

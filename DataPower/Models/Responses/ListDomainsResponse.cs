@@ -12,16 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Diagnostics.CodeAnalysis;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects;
 using Newtonsoft.Json;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.Responses
 {
+    // Wire-format DTOs deserialized only inside DataPowerClient.ListDomains() (the
+    // real network boundary, excluded from coverage - see DataPowerClient).
+    [ExcludeFromCodeCoverage]
     public class ListDomainsResponse
     {
         [JsonProperty("domain")] public DomainInfo[] Domains { get; set; }
     }
 
+    [ExcludeFromCodeCoverage]
     public class ListDomainsSingleResponse
     {
         [JsonProperty("domain")] public DomainInfo Domain { get; set; }
