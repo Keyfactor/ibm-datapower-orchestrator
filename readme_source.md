@@ -1,6 +1,6 @@
 ## Overview
 
-The IBM DataPower Universal Orchestrator manages certificates on IBM DataPower appliances over the REST Management Interface. It supports Discovery, Inventory, Add, and Remove for both per-domain (`cert:`) and appliance-wide (`pubcert:`, `sharedcert:`) certificate stores.
+The IBM DataPower Universal Orchestrator manages certificates on IBM DataPower appliances over the REST Management Interface. It supports Discovery, Inventory, Add, and Remove for per-domain (`cert:`), per-domain-with-appliance-wide-storage (`sharedcert:`), and appliance-wide (`pubcert:`) certificate stores. `sharedcert:` files are physically stored appliance-wide, but the `CryptoCertificate` / `CryptoKey` config objects that reference them are domain-scoped, so the orchestrator discovers and manages `sharedcert` per owning domain rather than folding it into `default`.
 
 ## Vendor Configuration
 

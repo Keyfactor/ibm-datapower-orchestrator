@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -28,7 +29,14 @@ using Newtonsoft.Json;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Client
 {
-    public class DataPowerClient
+    // This is the real network boundary - every method makes an actual HTTPS call
+    // to the DataPower REST Management Interface via HttpWebRequest, which isn't
+    // mockable without introducing an HTTP transport seam of its own. RequestManager
+    // and the Job classes are unit-tested against IDataPowerClient instead (see
+    // DataPower.Tests); this class's actual request/response handling is exercised
+    // by the Postman collection in test/ against a live/lab appliance.
+    [ExcludeFromCodeCoverage]
+    public class DataPowerClient : IDataPowerClient
     {
         private readonly ILogger<DataPowerClient> _logger;
 

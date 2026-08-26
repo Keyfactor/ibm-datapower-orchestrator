@@ -12,16 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Diagnostics.CodeAnalysis;
 using Keyfactor.Extensions.Orchestrator.DataPower.Models.SupportingObjects;
 using Newtonsoft.Json;
 
 namespace Keyfactor.Extensions.Orchestrator.DataPower.Models.Responses
 {
+    // Wire-format DTOs deserialized only inside
+    // DataPowerClient.ListFileStoreDirectories() (excluded from coverage).
+    [ExcludeFromCodeCoverage]
     public class ListFileStoreResponse
     {
         [JsonProperty("filestore")] public FileStoreContent FileStore { get; set; }
     }
 
+    [ExcludeFromCodeCoverage]
     public class FileStoreContent
     {
         [JsonProperty("location")] public FileStoreLocation[] Locations { get; set; }

@@ -37,11 +37,36 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 {
     public class RequestManager
     {
+        private const string SharedCertStoreName = "sharedcert";
+        private const string DefaultDomainName = "default";
+
         private readonly ILogger _logger;
         private string _protocol;
         private IPAMSecretResolver _resolver;
         private string ServerUserName { get; set; }
         private string ServerPassword { get; set; }
+
+        // Unit-test seam: production code never sets this, so every RequestManager
+        // constructs the real DataPowerClient. Tests substitute a factory that returns
+        // a mock IDataPowerClient instead of making real HTTPS calls.
+        public Func<string, string, string, string, IDataPowerClient> ClientFactory { get; set; } =
+            (user, pass, baseUrl, domain) => new DataPowerClient(user, pass, baseUrl, domain);
+
+        // sharedcert files physically live in the default domain's filestore - DataPower
+        // rejects filestore writes to sharedcert:// from any other domain context. The
+        // CryptoCertificate/CryptoKey config *objects* that reference those files, though,
+        // can live in any domain (that's the whole reason sharedcert stores are now
+        // per-domain). FileDomainFor() returns which domain a filestore write/delete must
+        // target, as opposed to ci.Domain, which is where the config object lives.
+        private static string FileDomainFor(CertStoreInfo ci)
+        {
+            return IsSharedCertStore(ci) ? DefaultDomainName : ci.Domain;
+        }
+
+        private static bool IsSharedCertStore(CertStoreInfo ci)
+        {
+            return string.Equals(ci?.CertificateStore?.Trim(), SharedCertStoreName, StringComparison.OrdinalIgnoreCase);
+        }
 
 
         public RequestManager(IPAMSecretResolver resolver)
@@ -73,7 +98,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public bool DoesCryptoCertificateObjectExist(CertStoreInfo ci, string cryptoCertObjectName,
-            DataPowerClient apiClient)
+            IDataPowerClient apiClient)
         {
             var bUpdateCryptoCertificateObject = false;
             try
@@ -105,7 +130,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             return bUpdateCryptoCertificateObject;
         }
 
-        public void DisableCryptoCertificateObject(string cryptoCertObjectName, DataPowerClient apiClient)
+        public void DisableCryptoCertificateObject(string cryptoCertObjectName, IDataPowerClient apiClient)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Disable State for Crypto Certificate Object: {cryptoCertObjectName}");
@@ -136,7 +161,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public bool DoesCryptoKeyObjectExist(CertStoreInfo ci, string cryptoKeyObjectName, DataPowerClient apiClient)
+        public bool DoesCryptoKeyObjectExist(CertStoreInfo ci, string cryptoKeyObjectName, IDataPowerClient apiClient)
         {
             _logger.MethodEntry(LogLevel.Debug);
             var bUpdateCryptoKeyObject = false;
@@ -163,7 +188,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             return bUpdateCryptoKeyObject;
         }
 
-        public void DisableCryptoKeyObject(string cryptoKeyObjectName, DataPowerClient apiClient)
+        public void DisableCryptoKeyObject(string cryptoKeyObjectName, IDataPowerClient apiClient)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Disable State for Crypto Certificate Object: {cryptoKeyObjectName}");
@@ -193,7 +218,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public void UpdatePrivateKey(CertStoreInfo ci, string cryptoKeyObjectName,
-            DataPowerClient apiClient, string keyFileName, string alias)
+            IDataPowerClient apiClient, string keyFileName, string alias)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Updating Crypto Key Object: {cryptoKeyObjectName}");
@@ -219,7 +244,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public void AddCryptoKey(CertStoreInfo ci, string cryptoKeyObjectName, DataPowerClient apiClient,
+        public void AddCryptoKey(CertStoreInfo ci, string cryptoKeyObjectName, IDataPowerClient apiClient,
             string keyFileName,
             string alias)
         {
@@ -249,13 +274,13 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public JobResult RemovePrivateKeyFile(ManagementJobConfiguration addConfig, CertStoreInfo ci,
-            string keyFileName)
+            string keyFileName, string fileDomain)
         {
             try
             {
                 _logger.MethodEntry(LogLevel.Debug);
                 _logger.LogTrace($"Removing Old Private Key File {keyFileName}");
-                var removeFileResult = RemoveFile(addConfig, ci, keyFileName);
+                var removeFileResult = RemoveFile(addConfig, ci, keyFileName, fileDomain);
                 _logger.LogTrace($"Private Key {keyFileName} is removed");
                 _logger.MethodExit(LogLevel.Debug);
                 return removeFileResult;
@@ -268,14 +293,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public CertificateAddRequest AddPrivateKey(CertStoreInfo ci, string alias, string keyFileName,
-            DataPowerClient apiClient,
-            string privateKeyString)
+            IDataPowerClient apiClient,
+            string privateKeyString, string fileDomain)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Adding Private Key {alias} to CERT store with Filename {keyFileName} ");
             try
             {
-                var certKeyRequest = new CertificateAddRequest(apiClient.Domain, keyFileName, ci.CertificateStore)
+                var certKeyRequest = new CertificateAddRequest(fileDomain, keyFileName, ci.CertificateStore)
                 {
                     Certificate = new CertificateRequest
                     {
@@ -297,7 +322,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public void UpdateCryptoCert(CertStoreInfo ci, string cryptoCertObjectName,
-            DataPowerClient apiClient, string certFileName, string alias)
+            IDataPowerClient apiClient, string certFileName, string alias)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Updating Crypto Certificate Object: {cryptoCertObjectName}");
@@ -324,7 +349,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public void AddCryptoCert(CertStoreInfo ci, string cryptoCertObjectName, DataPowerClient apiClient,
+        public void AddCryptoCert(CertStoreInfo ci, string cryptoCertObjectName, IDataPowerClient apiClient,
             string certFileName,
             string alias)
         {
@@ -353,13 +378,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public JobResult RemoveCertificate(ManagementJobConfiguration addConfig, CertStoreInfo ci, string certFileName)
+        public JobResult RemoveCertificate(ManagementJobConfiguration addConfig, CertStoreInfo ci, string certFileName,
+            string fileDomain)
         {
             try
             {
                 _logger.MethodEntry(LogLevel.Debug);
                 _logger.LogTrace($"Removing Old Certificate File {certFileName}");
-                var result = RemoveFile(addConfig, ci, certFileName);
+                var result = RemoveFile(addConfig, ci, certFileName, fileDomain);
                 _logger.LogTrace($"Old Certificate File {certFileName} is removed");
                 _logger.MethodExit(LogLevel.Debug);
                 return result;
@@ -372,13 +398,13 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         public CertificateAddRequest CertificateAddRequest(CertStoreInfo ci, string alias, string certFileName,
-            DataPowerClient apiClient, string certPem)
+            IDataPowerClient apiClient, string certPem, string fileDomain)
         {
             _logger.MethodEntry(LogLevel.Debug);
             _logger.LogTrace($"Adding Certificate {alias} with Filename {certFileName} ");
             try
             {
-                var certRequest = new CertificateAddRequest(apiClient.Domain, certFileName, ci.CertificateStore)
+                var certRequest = new CertificateAddRequest(fileDomain, certFileName, ci.CertificateStore)
                 {
                     Certificate = new CertificateRequest
                     {
@@ -426,7 +452,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             return bRemoveKeyFile;
         }
 
-        public bool DoesCertificateFileExist(CertStoreInfo ci, DataPowerClient apiClient,
+        public bool DoesCertificateFileExist(CertStoreInfo ci, IDataPowerClient apiClient,
             string certFileName, ViewPublicCertificatesResponse viewCertificateCollection)
         {
             _logger.MethodEntry(LogLevel.Debug);
@@ -529,7 +555,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 $"Entering AddPubCert for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
                 $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {addPubConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
+            var apiClient = ClientFactory(ServerUserName, ServerPassword,
                 $"{_protocol}://" + addPubConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("API Client Created");
 
@@ -615,9 +641,16 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 $"Entering RemoveCertStore for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
                 $"Creating API Client Created with user: {ServerUserName} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
+            var apiClient = ClientFactory(ServerUserName, ServerPassword,
                 $"{_protocol}://" + removeConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("API Client Created!");
+
+            // Config objects (CryptoCertificate/CryptoKey) live in ci.Domain, but a
+            // sharedcert:// file itself can only be deleted through the default domain -
+            // see FileDomainFor().
+            var fileDomain = FileDomainFor(ci);
+            var certFolder = ci.CertificateStore?.Trim() ?? "cert";
+
             try
             {
                 _logger.LogTrace($"Checking to find CryptoCertObject {removeConfig.JobCertificate.Alias} ");
@@ -636,8 +669,9 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                     _logger.LogTrace($"request JSON {JsonConvert.SerializeObject(request)}");
                     apiClient.DeleteCryptoCertificate(request);
                     _logger.LogTrace($"Remove Certificate File {viewCertificateSingle.CryptoCertificate.CertFile} ");
-                    var request2 = new DeleteCertificateRequest(apiClient.Domain,
-                        viewCertificateSingle.CryptoCertificate.CertFile.Replace(ci.CertificateStore + ":///", ""));
+                    var request2 = new DeleteCertificateRequest(fileDomain,
+                        viewCertificateSingle.CryptoCertificate.CertFile.Replace(ci.CertificateStore + ":///", ""),
+                        certFolder);
                     _logger.LogTrace($"request2 JSON {JsonConvert.SerializeObject(request2)}");
                     apiClient.DeleteCertificate(request2);
                     _logger.LogTrace("Certificate Deleted!");
@@ -660,8 +694,8 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                     _logger.LogTrace($"request JSON {JsonConvert.SerializeObject(request)}");
                     apiClient.DeleteCryptoKey(request);
                     _logger.LogTrace($"Remove Key File {cryptoKey.CertFile} ");
-                    var request2 = new DeleteCertificateRequest(apiClient.Domain,
-                        cryptoKey.CertFile.Replace(ci.CertificateStore + ":///", ""));
+                    var request2 = new DeleteCertificateRequest(fileDomain,
+                        cryptoKey.CertFile.Replace(ci.CertificateStore + ":///", ""), certFolder);
                     _logger.LogTrace($"request2 JSON {JsonConvert.SerializeObject(request2)}");
                     apiClient.DeleteCertificate(request2);
                     _logger.LogTrace("Certificate Deleted!");
@@ -685,7 +719,8 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             };
         }
 
-        private JobResult RemoveFile(ManagementJobConfiguration removeConfig, CertStoreInfo ci, string filename)
+        private JobResult RemoveFile(ManagementJobConfiguration removeConfig, CertStoreInfo ci, string filename,
+            string fileDomain)
         {
             _logger.MethodEntry(LogLevel.Debug);
             ServerUserName = ResolvePamField("ServerUserName", removeConfig.ServerUsername);
@@ -695,14 +730,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 $"Entering RemoveFile for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
                 $"Creating API Client Created with user: {ServerUserName} password: {ServerPassword} protocol: {_protocol} ClientMachine: {removeConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
+            var apiClient = ClientFactory(ServerUserName, ServerPassword,
                 $"{_protocol}://" + removeConfig.CertificateStoreDetails.ClientMachine.Trim(), ci.Domain);
             _logger.LogTrace("Api Client Created!");
             try
             {
-                _logger.LogTrace($"Deleting Actual File {filename} ");
-                var request2 = new DeleteCertificateRequest(apiClient.Domain,
-                    filename.Replace(ci.CertificateStore + ":///", ""));
+                _logger.LogTrace($"Deleting Actual File {filename} in domain {fileDomain}");
+                var request2 = new DeleteCertificateRequest(fileDomain,
+                    filename.Replace(ci.CertificateStore + ":///", ""), ci.CertificateStore?.Trim() ?? "cert");
                 _logger.LogTrace($"request2 JSON {JsonConvert.SerializeObject(request2)}");
                 apiClient.DeleteCertificate(request2);
                 _logger.LogTrace("Certificate Deleted!");
@@ -769,10 +804,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 var storePath = addConfig.CertificateStoreDetails.StorePath;
                 _logger.LogTrace($"publicCertStoreName: {publicCertStoreName} storePath: {storePath}");
 
-                // pubcert and sharedcert are appliance-wide on DataPower (owned by the
-                // default domain). DataPower's REST mgmt rejects writes through any
-                // non-default domain context with a 403. Reject upfront with a clear
-                // message instead of letting the appliance's "Forbidden." come back.
+                // pubcert's underlying filestore is appliance-wide and owned by the default
+                // domain - DataPower's REST mgmt rejects writes through any non-default
+                // domain context with a 403. Reject upfront with a clear message instead of
+                // letting the appliance's "Forbidden." come back. sharedcert's filestore is
+                // also appliance-wide/default-owned, but unlike pubcert its CryptoCertificate
+                // config objects are per-domain (that's why sharedcert stores are per-domain
+                // now) - AddCertStore/FileDomainFor() route the filestore write to default
+                // regardless of ci.Domain, so no upfront store-path restriction is needed here.
                 if (storePath.Contains("pubcert"))
                 {
                     if (storePath != publicCertStoreName && (storePath != "default\\" + publicCertStoreName))
@@ -782,19 +821,6 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                             Result = OrchestratorJobStatusJobResult.Failure,
                             JobHistoryId = addConfig.JobHistoryId,
                             FailureMessage = "You can only add to pubcert on the default domain"
-                        };
-                    }
-                }
-
-                if (storePath.Contains("sharedcert"))
-                {
-                    if (storePath != "sharedcert" && storePath != "default\\sharedcert")
-                    {
-                        return new JobResult
-                        {
-                            Result = OrchestratorJobStatusJobResult.Failure,
-                            JobHistoryId = addConfig.JobHistoryId,
-                            FailureMessage = "You can only add to sharedcert on the default domain"
                         };
                     }
                 }
@@ -824,10 +850,15 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 $"Entering AddCertStore for Domain: {ci.Domain} and Certificate Store: {ci.CertificateStore}");
             _logger.LogTrace(
                 $"Creating API Client Created with user: {ServerUserName} protocol: {_protocol} ClientMachine: {addConfig.CertificateStoreDetails.ClientMachine.Trim()} Domain: {ci.Domain}");
-            var apiClient = new DataPowerClient(ServerUserName, ServerPassword,
+            var apiClient = ClientFactory(ServerUserName, ServerPassword,
                 $"{_protocol}://" + addConfig.CertificateStoreDetails.ClientMachine.Trim(),
                 ci.Domain);
             _logger.LogTrace("apiClient created!");
+
+            // Config objects (CryptoCertificate/CryptoKey) are created/updated in
+            // ci.Domain, but a sharedcert:// file can only be written through the default
+            // domain - see FileDomainFor().
+            var fileDomain = FileDomainFor(ci);
 
             var alias = addConfig.JobCertificate.Alias.ToLower();
             if (string.IsNullOrEmpty(alias))
@@ -872,7 +903,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                     _logger.LogTrace($"cryptoKeyObjectName: {cryptoKeyObjectName}");
 
                     //Get the certificate collection to be used to check for cert files and private keys
-                    var viewCert = new ViewPublicCertificatesRequest(ci.Domain, ci.CertificateStore);
+                    var viewCert = new ViewPublicCertificatesRequest(fileDomain, ci.CertificateStore);
                     _logger.LogTrace($"viewCert JSON {JsonConvert.SerializeObject(viewCert)}");
                     var viewCertificateCollection = apiClient.ViewPublicCertificates(viewCert);
                     _logger.LogTrace(
@@ -880,14 +911,14 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 
                     _logger.LogTrace("Starting ReplaceCertificateFile!");
                     ReplaceCertificateFile(addConfig, ci, apiClient, certFileName, viewCertificateCollection, alias,
-                        certPem);
+                        certPem, fileDomain);
                     _logger.LogTrace("Finished ReplaceCertificateFile!");
                     _logger.LogTrace("Starting ReplaceCryptoObject!");
                     ReplaceCryptoObject(ci, cryptoCertObjectName, apiClient, certFileName, alias);
                     _logger.LogTrace("Finished ReplaceCryptoObject!");
                     _logger.LogTrace("Starting ReplacePrivateKey!");
                     ReplacePrivateKey(addConfig, ci, keyFileName, viewCertificateCollection, alias, apiClient,
-                        privateKeyString);
+                        privateKeyString, fileDomain);
                     _logger.LogTrace("Finished ReplacePrivateKey!");
                     _logger.LogTrace("Starting ReplaceCryptoKeyObject!");
                     ReplaceCryptoKeyObject(ci, cryptoKeyObjectName, apiClient, keyFileName, alias);
@@ -934,8 +965,8 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         private void ReplacePrivateKey(ManagementJobConfiguration addConfig, CertStoreInfo ci, string keyFileName,
-            ViewPublicCertificatesResponse viewCertificateCollection, string alias, DataPowerClient apiClient,
-            string privateKeyString)
+            ViewPublicCertificatesResponse viewCertificateCollection, string alias, IDataPowerClient apiClient,
+            string privateKeyString, string fileDomain)
         {
             _logger.MethodEntry(LogLevel.Debug);
             try
@@ -946,12 +977,12 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 if (bRemoveKeyFile)
                 {
                     _logger.LogTrace("Removing Private Key!");
-                    RemovePrivateKeyFile(addConfig, ci, keyFileName);
+                    RemovePrivateKeyFile(addConfig, ci, keyFileName, fileDomain);
                     _logger.LogTrace("Private Key Removed!");
                 }
 
                 var certKeyRequest =
-                    AddPrivateKey(ci, alias, keyFileName, apiClient, privateKeyString);
+                    AddPrivateKey(ci, alias, keyFileName, apiClient, privateKeyString, fileDomain);
                 _logger.LogTrace($"certKeyRequest {JsonConvert.SerializeObject(certKeyRequest)}");
                 _logger.LogTrace($"Adding Private File {keyFileName}");
                 apiClient.AddCertificateFile(certKeyRequest);
@@ -966,8 +997,9 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
         }
 
         private void ReplaceCertificateFile(ManagementJobConfiguration addConfig, CertStoreInfo ci,
-            DataPowerClient apiClient,
-            string certFileName, ViewPublicCertificatesResponse viewCertificateCollection, string alias, string certPem)
+            IDataPowerClient apiClient,
+            string certFileName, ViewPublicCertificatesResponse viewCertificateCollection, string alias,
+            string certPem, string fileDomain)
         {
             try
             {
@@ -981,10 +1013,10 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 var certificateFileExists =
                     DoesCertificateFileExist(ci, apiClient, certFileName, viewCertificateCollection);
                 if (certificateFileExists)
-                    RemoveCertificate(addConfig, ci, certFileName);
+                    RemoveCertificate(addConfig, ci, certFileName, fileDomain);
 
                 _logger.LogTrace($"Adding Certificate File {certFileName}");
-                var certRequest = CertificateAddRequest(ci, alias, certFileName, apiClient, certPem);
+                var certRequest = CertificateAddRequest(ci, alias, certFileName, apiClient, certPem, fileDomain);
                 apiClient.AddCertificateFile(certRequest);
             }
             catch (Exception e)
@@ -994,7 +1026,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        private void ReplaceCryptoKeyObject(CertStoreInfo ci, string cryptoKeyObjectName, DataPowerClient apiClient,
+        private void ReplaceCryptoKeyObject(CertStoreInfo ci, string cryptoKeyObjectName, IDataPowerClient apiClient,
             string keyFileName,
             string alias)
         {
@@ -1035,7 +1067,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        private void ReplaceCryptoObject(CertStoreInfo ci, string cryptoCertObjectName, DataPowerClient apiClient,
+        private void ReplaceCryptoObject(CertStoreInfo ci, string cryptoCertObjectName, IDataPowerClient apiClient,
             string certFileName, string alias)
         {
             try
@@ -1078,7 +1110,7 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public JobResult GetPublicCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
+        public JobResult GetPublicCerts(InventoryJobConfiguration config, IDataPowerClient apiClient,
             SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
@@ -1172,12 +1204,17 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
             }
         }
 
-        public JobResult GetCerts(InventoryJobConfiguration config, DataPowerClient apiClient,
+        public JobResult GetCerts(InventoryJobConfiguration config, IDataPowerClient apiClient,
             SubmitInventoryUpdate submitInventory, CertStoreInfo ci, FlowLogger flow = null)
         {
             try
             {
                 _logger.LogTrace("GetCerts");
+
+                // Store paths are per-domain now (including sharedcert - see
+                // Discovery.DiscoverSharedCertDomains), so ci.Domain is always the domain
+                // that actually owns the CryptoCertificate objects for this store; no
+                // cross-domain lookup needed here.
                 var viewCert = new ViewCryptoCertificatesRequest(apiClient.Domain);
                 _logger.LogTrace($"Get Certs Request: {JsonConvert.SerializeObject(viewCert)}");
                 var viewCertificateCollection = apiClient.ViewCertificates(viewCert);
@@ -1193,8 +1230,8 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                 // /mgmt/config/{domain}/CryptoCertificate returns every CryptoCertificate
                 // object in the domain regardless of which filestore directory its file
                 // lives in. Filter to those whose Filename URI scheme matches the store
-                // path we're inventorying so a "default\sharedcert" job doesn't show
-                // pubcert: entries (and vice versa).
+                // path we're inventorying so a "{domain}\sharedcert" job doesn't show
+                // cert: entries (and vice versa).
                 var storeScheme = (ci.CertificateStore ?? string.Empty).Trim() + ":";
                 var cryptoCerts = allCryptoCerts
                     .Where(cc => cc?.CertFile != null &&
@@ -1203,6 +1240,15 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
 
                 flow?.Step("GetCerts.ParseResponse",
                     $"certCount={cryptoCerts.Length} (filtered from {allCryptoCerts.Length} by scheme '{storeScheme}'), blacklistCount={blackList.Count}");
+
+                // Certs that throw during per-cert detail fetch/parse (e.g. a .p12 that
+                // ViewCertificateDetail can't resolve to a bare X509Certificate2) are
+                // logged and skipped rather than aborting the whole job - one bad cert
+                // shouldn't sink inventory of the rest. But silently returning Success
+                // when some certs were dropped hides that from operators watching only
+                // Command's job history. Track them so the result can be downgraded to
+                // Warning below.
+                var unresolvedCerts = new List<string>();
                 foreach (var cc in cryptoCerts)
                     if (cc != null && !string.IsNullOrEmpty(cc.Name))
                     {
@@ -1242,15 +1288,31 @@ namespace Keyfactor.Extensions.Orchestrator.DataPower
                         }
                         catch (Exception ex)
                         {
+                            unresolvedCerts.Add(cc.Name);
                             _logger.LogError(
                                 $"Certificate not retrievable: Error on {cc.Name}: {LogHandler.FlattenException(ex)}");
                         }
                     }
 
                 _logger.LogTrace($"Submitting {inventoryItems.Count} inventory items");
-                flow?.Step("GetCerts.SubmitInventory", $"itemCount={inventoryItems.Count}");
+                flow?.Step("GetCerts.SubmitInventory",
+                    $"itemCount={inventoryItems.Count}, unresolvedCount={unresolvedCerts.Count}");
                 submitInventory.Invoke(inventoryItems);
                 _logger.LogTrace("Submitted Inventory Items.");
+
+                if (unresolvedCerts.Count > 0)
+                {
+                    var sample = string.Join(", ", unresolvedCerts.Take(10));
+                    var more = unresolvedCerts.Count - Math.Min(unresolvedCerts.Count, 10);
+                    var suffix = more > 0 ? $" (+{more} more)" : "";
+                    return new JobResult
+                    {
+                        Result = OrchestratorJobStatusJobResult.Warning,
+                        JobHistoryId = config.JobHistoryId,
+                        FailureMessage =
+                            $"{inventoryItems.Count} cert(s) inventoried, but {unresolvedCerts.Count} could not be retrieved/parsed and were skipped: {sample}{suffix}. Check the orchestrator log for the per-cert error (a common cause is a .p12 that the appliance's ViewCertificateDetail response can't be parsed as a bare X.509 cert)."
+                    };
+                }
 
                 return new JobResult
                 {
